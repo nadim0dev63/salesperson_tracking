@@ -138,6 +138,7 @@ class SalespersonTrackingController(http.Controller):
             speed=payload.get("speed"),
             heading=payload.get("heading"),
             source=payload.get("source") or "browser",
+            distance=float(payload.get("distance") or 0.0),
         )
 
         today_start = fields.Datetime.to_datetime(date.today())

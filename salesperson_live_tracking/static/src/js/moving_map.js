@@ -131,17 +131,6 @@
         pts.forEach(function (p, i) {
             if (i === 0 || i === pts.length - 1) return;
 
-            if (p.accuracy > 0 && p.accuracy <= 500) {
-                L.circle([p.lat, p.lng], {
-                    radius:      p.accuracy,
-                    color:       '#3b82f6',
-                    fillColor:   '#3b82f6',
-                    fillOpacity: 0.08,
-                    weight:      1,
-                    opacity:     0.3,
-                }).addTo(map);
-            }
-
             var dot = L.circleMarker([p.lat, p.lng], {
                 radius:      4,
                 color:       '#1a73e8',

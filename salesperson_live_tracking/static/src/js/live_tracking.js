@@ -127,7 +127,7 @@
         localStorage.removeItem('lastLng');
     };
 
-    const GPS_OPTS = { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 };
+    const GPS_OPTS = { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 };
     const INTERVAL_MS = 2 * 1000;
 
     const fetchAndSend = () => {
