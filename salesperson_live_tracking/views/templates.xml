@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <template id="live_tracking_page" name="Salesperson Live Tracking">
+        <html lang="en">
+            <head>
+                <meta charset="utf-8"/>
+                <meta name="viewport" content="width=device-width, initial-scale=1"/>
+                <title>Live Tracking — <t t-out="user.name"/></title>
+                <link rel="stylesheet" t-att-href="'/salesperson_live_tracking/static/src/css/live_tracking.css'"/>
+            </head>
+            <body>
+                <div id="trackingRoot"
+                     t-att-data-user-id="user.id"
+                     t-att-data-tracker-id="tracker.id"
+                     t-att-data-status="tracker.tracking_status"
+                     t-att-data-map-url="tracker.openstreetmap_url or ''"
+                     t-att-data-my-tracking-url="my_tracking_url"
+                     t-att-data-distance="'%.1f' % total_distance_km"
+                     style="display:none"/>
+
+                <main class="shell">
+                    <div class="card">
+                        <div class="header-row">
+                            <div>
+                                <p class="page-title">Live GPS Tracking</p>
+
+                            </div>
+                            <div id="statusBadge"
+                                 t-attf-class="status-badge #{ 'badge-' + tracker.tracking_status }">
+                                <span id="statusDot"
+                                      t-attf-class="status-dot #{ 'dot-' + tracker.tracking_status }"/>
+                                <span id="statusLabel">
+                                    <t t-out="tracker.tracking_status_label"/>
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Metrics -->
+                        <div class="metrics-grid">
+                            <div class="metric-card">
+                                <div class="metric-label">Location</div>
+                                <div class="metric-value" id="locationNameValue">
+                                    <t t-out="tracker.location_name or '—'"/>
+                                </div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-label">Last update</div>
+                                <div class="metric-value" id="lastSeenValue">
+                                    <t t-out="tracker.last_seen or 'Not tracked yet'"/>
+                                </div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-label">Latitude</div>
+                                <div class="metric-value" id="latitudeValue">
+                                    <t t-out="tracker.latitude or '—'"/>
+                                </div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-label">Longitude</div>
+                                <div class="metric-value" id="longitudeValue">
+                                    <t t-out="tracker.longitude or '—'"/>
+                                </div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-label">Accuracy</div>
+                                <div class="metric-value" id="accuracyValue">
+                                    <t t-if="tracker.last_accuracy">
+                                        <t t-out="tracker.last_accuracy"/> m
+                                    </t>
+                                    <t t-else="">—</t>
+                                </div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-label">Taking Time</div>
+                                <div class="metric-value" id="takingTimeValue">—</div>
+                            </div>
+                        </div>
+
+                        <!-- KPI Row -->
+                        <div class="kpi-row">
+                            <div class="kpi-box">
+                                <div class="kpi-num" id="kpiPlan"><t t-out="today_plan_count"/></div>
+                                <div class="kpi-lbl">Planned</div>
+                            </div>
+                            <div class="kpi-box">
+                                <div class="kpi-num" id="kpiCovered"><t t-out="today_covered_count"/></div>
+                                <div class="kpi-lbl">Covered</div>
+                            </div>
+                            <div class="kpi-box">
+                                <div class="kpi-num" id="kpiRate">
+                                    <t t-if="today_plan_count">
+                                        <t t-out="'%d' % (today_covered_count * 100 // today_plan_count)"/>%
+                                    </t>
+                                    <t t-else="">0%</t>
+                                </div>
+                                <div class="kpi-lbl">Rate</div>
+                            </div>
+                            <div class="kpi-box">
+                                <div class="kpi-num" id="kpiDistance">
+                                    <t t-out="'%.1f' % total_distance_km"/>
+                                </div>
+                                <div class="kpi-lbl">Km today</div>
+                            </div>
+                        </div>
+
+                        <!-- Actions -->
+                        <div class="action-bar">
+                            <button id="startButton" class="btn btn-primary" type="button">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/>
+                                </svg>
+                                Start tracking
+                            </button>
+                            <button id="stopButton" class="btn btn-danger" type="button">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6"/>
+                                </svg>
+                                Stop
+                            </button>
+                            <a id="myStatusBtn" class="btn" t-att-href="my_tracking_url">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                                </svg>
+                                My status page
+                            </a>
+                            <a id="mapButton" class="btn"
+                               t-att-href="tracker.openstreetmap_url or '#'"
+                               target="_blank">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
+                                </svg>
+                                Open in map
+                            </a>
+
+                        
+                            <div class="cam-wrapper" id="camRoot">
+                                <button class="cam-open-btn" id="openCameraBtn">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                                        <circle cx="12" cy="13" r="4"/>
+                                    </svg>
+                                    Open camera
+                                </button>
+
+                                <div class="cam-preview" id="previewBox" style="display:none">
+                                    <video id="selfieVideo" autoplay="autoplay" playsinline="playsinline" muted="muted"></video>
+                                    <div class="cam-flash" id="flashEl"></div>
+                                    <div class="cam-bar">
+                                        <button class="cb-stop" id="stopBtn" title="Close">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                                            </svg>
+                                        </button>
+                                        <button class="cb-shutter" id="captureBtn" title="Take photo">
+                                            <div class="cb-shutter-inner"></div>
+                                        </button>
+                                        <button class="cb-flip" id="flipBtn" title="Flip camera">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M1 4v6h6"/><path d="M23 20v-6h-6"/>
+                                                <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <canvas id="selfieCanvas" style="display:none"></canvas>
+
+                                <div class="snap-row" id="snapRow" style="display:none">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <polyline points="20 6 9 17 4 12"/>
+                                    </svg>
+                                    <span>Photo captured</span>
+                                    <a id="downloadLink">Save</a>
+                                </div>
+
+                                <span class="cam-label" id="camLabel">Click to access your camera</span>
+
+                                <div class="cam-gallery" id="camGallery" style="display:none">
+                                    <div class="gallery-title">
+                                        <span id="galleryCount">Saved photos (0)</span>
+                                        <button id="clearAllBtn" type="button">Clear all</button>
+                                    </div>
+                                    <div class="gallery-grid" id="galleryGrid"></div>
+                                </div>
+
+                                <div class="photo-viewer" id="photoViewer" style="display:none">
+                                    <img id="viewerImg" src="" alt="Photo"/>
+                                    <div class="viewer-bar">
+                                        <button class="pv-btn" id="pvBack" type="button">Back</button>
+                                        <button class="pv-btn" id="pvDownload" type="button">Download</button>
+                                        <button class="pv-btn pv-del" id="pvDelete" type="button">Delete</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Notice -->
+                        <div class="notice" id="noticeBox">
+                            <strong>How it works</strong>
+                            Tap Start, allow GPS permission, and the browser will send regular location
+                            updates into Odoo. For best results on mobile, use HTTPS and keep this page active.
+                        </div>
+
+                        <div id="checkinPanel" class="checkin-panel" style="display:none">
+                            <div class="checkin-title">&#9989; Checked in</div>
+                            <div style="font-size:12px;color:var(--green-600)">
+                                <strong id="checkinLocation">—</strong> · <span id="checkinTime">—</span>
+                            </div>
+                            <div style="margin-top:8px">
+                                <button id="addNotesBtn" class="btn" type="button" style="font-size:12px;padding:5px 10px">&#128221; Add notes</button>
+                            </div>
+                        </div>
+
+                    </div>
+                </main>
+                
+                <script t-att-src="'/salesperson_live_tracking/static/src/js/live_tracking.js'"></script>
+                <script t-att-src="'/salesperson_live_tracking/static/src/js/camera_wdigts.js'"></script>
+
+            </body>
+        </html>
+    </template>
+
+    <template id="moving_map_page" name="Salesperson Moving Map View">
+        <html lang="en">
+            <head>
+                <meta charset="utf-8"/>
+                <meta name="viewport" content="width=device-width, initial-scale=1"/>
+                <title>Moving Map — <t t-out="tracker.user_id.name"/></title>
+                <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css"/>
+                <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
+                <link rel="stylesheet" t-att-href="'/salesperson_live_tracking/static/src/css/moving_map.css'"/>
+            </head>
+            <body>
+                <div class="top-bar">
+                    <div class="top-bar-left">
+                        <div class="top-bar-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
+                                <circle cx="12" cy="10" r="3"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h1><t t-out="tracker.user_id.name"/> — Moving Map</h1>
+                            <div class="top-bar-sub">
+                                <t t-out="tracker.sale_team_id.name or 'No team assigned'"/>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="meta-pills">
+                        <div class="meta-pill">
+                            Status: <b><t t-out="tracker.tracking_status_label"/></b>
+                        </div>
+                        <div class="meta-pill">
+                            Logs today: <b><t t-out="total_logs"/></b>
+                        </div>
+                        <div class="meta-pill">
+                            Last seen: <b><t t-out="tracker.last_seen or '—'"/></b>
+                        </div>
+                        <div class="meta-pill" id="routeDistancePill" style="display:none">
+                            🛣 Distance: <b id="routeDistVal">—</b>
+                        </div>
+                        <div class="meta-pill" id="routeDurationPill" style="display:none">
+                            ⏱ Duration: <b id="routeDurVal">—</b>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Map -->
+                <div class="map-wrapper">
+                    <div id="map"
+                         t-att-data-points="location_points_b64"
+                         t-att-data-plans="plan_markers_b64"/>
+
+                    <!-- Route info overlay -->
+                    <div class="route-info-box" id="routeInfoBox">
+                        <div class="rib-dur" id="ribDur">— min</div>
+                        <div class="rib-dist" id="ribDist">— km</div>
+                        <span class="rib-badge">Road distance</span>
+                    </div>
+
+                    <!-- OSRM loading spinner -->
+                    <div class="route-loading" id="routeLoading">
+                        <div class="spinner"></div>
+                        Loading road route…
+                    </div>
+
+                    <div class="legend">
+                        <div class="legend-row"><span class="legend-dot" style="background:#3b6d11"/> Start point</div>
+                        <div class="legend-row"><span class="legend-dot" style="background:#dc2626"/> Current / last point</div>
+                        <div class="legend-row"><span class="legend-line" style="background:#1a73e8"/> Road route (OSRM)</div>
+                        <div class="legend-row"><span class="legend-dot" style="background:#3b6d11;opacity:.4"/> Visited location</div>
+                        <div class="legend-row"><span class="legend-dot" style="background:#dc2626;opacity:.4"/> Unvisited location</div>
+                    </div>
+                </div>
+
+                <script t-att-src="'/salesperson_live_tracking/static/src/js/moving_map.js'"></script>
+            </body>
+        </html>
+    </template>
+    
+
+</odoo>
+
+

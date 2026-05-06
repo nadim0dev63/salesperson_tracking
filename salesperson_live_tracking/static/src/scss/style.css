@@ -1,0 +1,53 @@
+
+.o_list_compact th,
+.o_list_compact td {
+    text-align: left;
+    font-size: 16px; 
+    padding: 5px 8px !important; 
+}
+
+.o_list_compact th {
+    background-color: #fafdff !important; 
+    font-weight: 600 !important;
+    text-align: center !important;
+    border-bottom: 2px solid #f8f8f8 !important; 
+}
+
+.o_list_compact td {
+    padding: 6px 8px !important; 
+    vertical-align: middle !important;
+}
+
+
+.o_group.gi .o_group_label,
+.o_group.gi thead td {
+    background: #185FA5 !important;
+    color: #B5D4F4 !important;
+    padding: 6px 14px !important;
+    font-weight: 500 !important;
+    border-radius: 6px 6px 0 0 !important;
+}
+
+.o_group.gl .o_group_label,
+.o_group.gl thead td {
+    background: #0F6E56 !important;
+    color: #9FE1CB !important;
+    padding: 6px 14px !important;
+    font-weight: 500 !important;
+}
+
+.o_group.gp .o_group_label,
+.o_group.gp thead td {
+    background: #534AB7 !important;
+    color: #CECBF6 !important;
+    padding: 6px 14px !important;
+    font-weight: 500 !important;
+}
+
+.o_group.ga .o_group_label,
+.o_group.ga thead td {
+    background: #854F0B !important;
+    color: #FAC775 !important;
+    padding: 6px 14px !important;
+    font-weight: 500 !important;
+}

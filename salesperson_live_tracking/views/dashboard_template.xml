@@ -1,0 +1,1246 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+<template id="salesperson_dashboard" name="Salesperson Live Tracking Dashboard">
+<t t-call="web.layout">
+    <t t-set="head">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+        <link rel="preconnect" href="https://fonts.googleapis.com"/>
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""/>
+        <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&amp;family=DM+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg:        #F0F4F8;
+            --surface:   #FFFFFF;
+            --surface2:  #F8FAFC;
+            --border:    #E2E8F0;
+            --border2:   #CBD5E1;
+            --text:      #0F172A;
+            --text2:     #334155;
+            --muted:     #64748B;
+            --faint:     #94A3B8;
+
+            --live:      #059669;
+            --live-bg:   #ECFDF5;
+            --live-bdr:  #A7F3D0;
+            --idle:      #D97706;
+            --idle-bg:   #FFFBEB;
+            --idle-bdr:  #FDE68A;
+            --offline:   #64748B;
+            --offline-bg:#F1F5F9;
+            --offline-bdr:#CBD5E1;
+
+            --blue:      #2563EB;
+            --blue-bg:   #EFF6FF;
+            --blue-bdr:  #BFDBFE;
+            --indigo:    #4F46E5;
+            --violet:    #7C3AED;
+            --rose:      #E11D48;
+            --rose-bg:   #FFF1F2;
+            --amber:     #D97706;
+
+            --accent:    #2563EB;
+            --accent2:   #7C3AED;
+
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 14px;
+            --radius-xl: 18px;
+            --shadow-sm: 0 1px 3px rgba(15,23,42,.06), 0 1px 2px rgba(15,23,42,.04);
+            --shadow-md: 0 4px 12px rgba(15,23,42,.08), 0 1px 3px rgba(15,23,42,.05);
+            --shadow-lg: 0 10px 30px rgba(15,23,42,.10), 0 2px 6px rgba(15,23,42,.06);
+        }
+
+        html, body { height: 100%; }
+
+        body {
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 14px;
+            line-height: 1.5;
+            min-height: 100vh;
+        }
+
+        /* ── TOP NAV ── */
+        .dash-nav {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+            height: 58px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            color: var(--text);
+        }
+
+        /* Leaflet custom marker fix */
+            .leaflet-marker-pane img.leaflet-marker-icon {
+                display: none !important;
+            }
+            .x-marker {
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+            }
+
+        .nav-brand-icon {
+            width: 34px;
+            height: 34px;
+            background: linear-gradient(135deg, #2563EB, #4F46E5);
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .nav-brand-icon svg { width: 18px; height: 18px; color: #fff; }
+
+        .nav-brand-text {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text);
+            letter-spacing: -.01em;
+        }
+
+        .nav-brand-sub {
+            font-size: 11px;
+            color: var(--muted);
+            font-weight: 400;
+        }
+
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .nav-live-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--live-bg);
+            border: 1px solid var(--live-bdr);
+            border-radius: 999px;
+            padding: 5px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--live);
+        }
+
+        .nav-live-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--live);
+            animation: pulse-dot 1.8s infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50%       { opacity: .6; transform: scale(.8); }
+        }
+
+        .nav-role-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 5px 12px;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text2);
+        }
+
+        .nav-role-badge svg { width: 13px; height: 13px; color: var(--muted); }
+
+        .nav-refresh-btn {
+            width: 34px;
+            height: 34px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            background: var(--surface);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: var(--muted);
+            transition: background .15s, color .15s;
+            text-decoration: none;
+        }
+        .nav-refresh-btn:hover { background: var(--surface2); color: var(--text2); }
+        .nav-refresh-btn svg { width: 15px; height: 15px; }
+
+        /* ── PAGE LAYOUT ── */
+        .dash-shell {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px 20px 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .dash-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .dash-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text);
+            letter-spacing: -.02em;
+        }
+
+        .dash-date {
+            font-size: 13px;
+            color: var(--muted);
+            font-weight: 400;
+        }
+
+        /* ── STAT CARDS ── */
+        .stat-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 14px;
+        }
+
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-xl);
+            padding: 18px 20px;
+            box-shadow: var(--shadow-sm);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            position: relative;
+            overflow: hidden;
+            transition: box-shadow .2s, transform .2s;
+        }
+        .stat-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+
+        .stat-card-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+        }
+
+        .stat-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .stat-icon svg { width: 20px; height: 20px; }
+        .stat-icon.blue   { background: var(--blue-bg);    color: var(--blue); }
+        .stat-icon.green  { background: var(--live-bg);    color: var(--live); }
+        .stat-icon.amber  { background: var(--idle-bg);    color: var(--idle); }
+        .stat-icon.violet { background: #F5F3FF;            color: var(--violet); }
+        .stat-icon.rose   { background: var(--rose-bg);    color: var(--rose); }
+
+        .stat-num {
+            font-size: 30px;
+            font-weight: 700;
+            letter-spacing: -.03em;
+            line-height: 1;
+            color: var(--text);
+        }
+        .stat-num.live-num   { color: var(--live); }
+        .stat-num.amber-num  { color: var(--amber); }
+
+        .stat-label {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: .05em;
+        }
+
+        .stat-sub {
+            font-size: 12px;
+            color: var(--faint);
+        }
+
+        /* ── MAIN GRID ── */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 320px;
+            gap: 16px;
+        }
+
+        /* ── CARD ── */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-sm);
+            overflow: hidden;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            gap: 10px;
+        }
+
+        .card-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .card-title svg { width: 16px; height: 16px; color: var(--muted); }
+
+        .card-badges {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 9px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 600;
+            border: 1px solid transparent;
+        }
+        .pill.live    { background: var(--live-bg);    color: var(--live);    border-color: var(--live-bdr); }
+        .pill.idle    { background: var(--idle-bg);    color: var(--idle);    border-color: var(--idle-bdr); }
+        .pill.offline { background: var(--offline-bg); color: var(--offline); border-color: var(--offline-bdr); }
+        .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+        /* ── MAP ── */
+        .map-container {
+            position: relative;
+            height: 420px;
+            background: #EFF6FF;
+        }
+
+        #live-map {
+            width: 100%;
+            height: 100%;
+        }
+
+        .map-refresh-btn {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            z-index: 1000;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 7px 12px;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text2);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: var(--shadow-md);
+            transition: background .15s;
+            font-family: inherit;
+        }
+        .map-refresh-btn:hover { background: var(--surface2); }
+        .map-refresh-btn svg { width: 13px; height: 13px; }
+
+        .map-no-data {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(240,244,248,.85);
+            backdrop-filter: blur(3px);
+            z-index: 500;
+            flex-direction: column;
+            gap: 10px;
+            color: var(--muted);
+        }
+        .map-no-data svg { width: 36px; height: 36px; opacity: .4; }
+        .map-no-data p { font-size: 13px; }
+
+        /* ── FIELD REPS TABLE ── */
+        .reps-table-wrap {
+            overflow-x: auto;
+        }
+
+        .reps-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .reps-table thead th {
+            padding: 10px 16px;
+            text-align: left;
+            font-size: 10.5px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            color: var(--muted);
+            background: var(--surface2);
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        .reps-table tbody tr {
+            border-bottom: 1px solid var(--border);
+            transition: background .12s;
+        }
+        .reps-table tbody tr:last-child { border-bottom: none; }
+        .reps-table tbody tr:hover { background: var(--surface2); }
+
+        .reps-table td {
+            padding: 11px 16px;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+
+        .rep-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+            color: #fff;
+            flex-shrink: 0;
+        }
+
+        .rep-info { display: flex; align-items: center; gap: 10px; }
+
+        .rep-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .rep-team {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 9px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 600;
+            border: 1px solid transparent;
+        }
+        .status-badge.live    { background: var(--live-bg);    color: var(--live);    border-color: var(--live-bdr); }
+        .status-badge.idle    { background: var(--idle-bg);    color: var(--idle);    border-color: var(--idle-bdr); }
+        .status-badge.offline { background: var(--offline-bg); color: var(--offline); border-color: var(--offline-bdr); }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+        .stage-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            font-weight: 500;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text2);
+        }
+
+        .coverage-bar-wrap { display: flex; align-items: center; gap: 8px; }
+        .coverage-bar {
+            width: 80px;
+            height: 5px;
+            background: var(--border);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .coverage-fill {
+            height: 100%;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #2563EB, #4F46E5);
+            transition: width .5s ease;
+        }
+        .coverage-pct { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; min-width: 30px; }
+
+        .dist-val {
+            font-family: 'DM Mono', monospace;
+            font-size: 12px;
+            color: var(--text2);
+        }
+
+        .last-seen-val {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .map-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 9px;
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            font-weight: 500;
+            background: var(--blue-bg);
+            color: var(--blue);
+            border: 1px solid var(--blue-bdr);
+            text-decoration: none;
+            transition: background .15s;
+            white-space: nowrap;
+        }
+        .map-link:hover { background: #DBEAFE; }
+        .map-link svg { width: 11px; height: 11px; }
+
+        /* ── ACTIVITY FEED ── */
+        .activity-list {
+            padding: 6px 0;
+        }
+
+        .activity-item {
+            display: flex;
+            gap: 12px;
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--border);
+            align-items: flex-start;
+        }
+        .activity-item:last-child { border-bottom: none; }
+
+        .activity-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-top: 5px;
+            flex-shrink: 0;
+        }
+
+        .activity-body { flex: 1; min-width: 0; }
+
+        .activity-name {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .activity-desc {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 1px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .activity-time {
+            font-size: 11px;
+            color: var(--faint);
+            font-family: 'DM Mono', monospace;
+            flex-shrink: 0;
+        }
+
+        .activity-empty {
+            padding: 32px 20px;
+            text-align: center;
+            color: var(--faint);
+            font-size: 13px;
+        }
+        .activity-empty svg { width: 28px; height: 28px; opacity: .35; display: block; margin: 0 auto 8px; }
+
+        /* ── KPI PANEL ── */
+        .kpi-panel {
+            padding: 16px 20px;
+        }
+
+        .kpi-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            color: var(--muted);
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .kpi-title svg { width: 13px; height: 13px; }
+
+        .kpi-donut-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .kpi-donut-svg {
+            position: relative;
+            width: 100px;
+            height: 100px;
+        }
+
+        .kpi-donut-center {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .kpi-donut-pct {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1;
+        }
+
+        .kpi-donut-lbl {
+            font-size: 9px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            margin-top: 1px;
+        }
+
+        .kpi-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .kpi-stat {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 10px 12px;
+            text-align: center;
+        }
+
+        .kpi-stat-num {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1;
+        }
+        .kpi-stat-num.green  { color: var(--live); }
+        .kpi-stat-num.amber  { color: var(--amber); }
+        .kpi-stat-num.rose   { color: var(--rose); }
+
+        .kpi-stat-lbl {
+            font-size: 10px;
+            color: var(--muted);
+            margin-top: 2px;
+        }
+
+        /* ── PERSONAL STATS (salesperson view) ── */
+        .personal-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            padding: 16px 20px;
+        }
+
+        .personal-card {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .personal-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .personal-icon svg { width: 17px; height: 17px; }
+        .personal-icon.green  { background: var(--live-bg); color: var(--live); }
+        .personal-icon.blue   { background: var(--blue-bg); color: var(--blue); }
+        .personal-icon.amber  { background: var(--idle-bg); color: var(--amber); }
+        .personal-icon.violet { background: #F5F3FF; color: var(--violet); }
+
+        .personal-val {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1;
+        }
+
+        .personal-lbl {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 1px;
+        }
+
+        /* ── RESPONSIVE ── */
+        @media (max-width: 1100px) {
+            .main-grid { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 860px) {
+            .stat-row { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 520px) {
+            .stat-row { grid-template-columns: 1fr 1fr; }
+            .dash-shell { padding: 12px 12px 32px; }
+        }
+        </style>
+    </t>
+    <t t-set="title">Live Tracking Dashboard</t>
+
+    <div id="wrapwrap">
+        <!-- NAV -->
+        <nav class="dash-nav">
+            <a href="/salesperson/dashboard" class="nav-brand">
+                <div class="nav-brand-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-5.5 8-12a8 8 0 1 0-16 0c0 6.5 8 12 8 12z"/><circle cx="12" cy="10" r="3"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="nav-brand-text">Live Tracking</div>
+                    <div class="nav-brand-sub">Salesperson Dashboard</div>
+                </div>
+            </a>
+
+            <div class="nav-right">
+                <t t-if="live_count &gt; 0">
+                    <div class="nav-live-badge">
+                        <span class="nav-live-dot"/>
+                        <span><t t-esc="live_count"/> Active Now</span>
+                    </div>
+                </t>
+                <div class="nav-role-badge">
+                    <t t-if="is_manager">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                        </svg>
+                        Manager
+                    </t>
+                    <t t-else="">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                        </svg>
+                        <t t-esc="user.name"/>
+                    </t>
+                </div>
+                <a href="/salesperson/dashboard" class="nav-refresh-btn" title="Refresh">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+                    </svg>
+                </a>
+            </div>
+        </nav>
+
+        <!-- PAGE -->
+        <div class="dash-shell">
+
+            <!-- HEADER -->
+            <div class="dash-header">
+                <div>
+                    <div class="dash-title">Live Tracking Dashboard</div>
+                    <div class="dash-date"><t t-esc="today"/></div>
+                </div>
+            </div>
+
+            <!-- STAT CARDS -->
+            <div class="stat-row">
+
+                <!-- Total Field Reps -->
+                <div class="stat-card">
+                    <div class="stat-card-top">
+                        <div class="stat-icon blue">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="stat-num"><t t-esc="total_reps"/></div>
+                        <div class="stat-label">Total Field Reps</div>
+                        <div class="stat-sub">Tracked</div>
+                    </div>
+                </div>
+
+                <!-- Live Right Now -->
+                <div class="stat-card">
+                    <div class="stat-card-top">
+                        <div class="stat-icon green">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M7.76 7.76a6 6 0 0 0 0 8.49"/><path d="M20.49 3.51a14 14 0 0 1 0 16.98"/><path d="M3.51 3.51a14 14 0 0 0 0 16.98"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="stat-num live-num"><t t-esc="live_count"/></div>
+                        <div class="stat-label">Live Right Now</div>
+                        <div class="stat-sub"><t t-esc="idle_count"/> idle · <t t-esc="offline_count"/> offline</div>
+                    </div>
+                </div>
+
+                <!-- Today's Visits -->
+                <div class="stat-card">
+                    <div class="stat-card-top">
+                        <div class="stat-icon amber">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="stat-num amber-num"><t t-esc="total_planned"/></div>
+                        <div class="stat-label">Today's Visits Planned</div>
+                        <div class="stat-sub"><t t-esc="total_covered"/> covered</div>
+                    </div>
+                </div>
+
+                <!-- Route Alerts -->
+                <div class="stat-card">
+                    <div class="stat-card-top">
+                        <div class="stat-icon rose">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="stat-num"><t t-esc="deviation_alerts"/></div>
+                        <div class="stat-label">Route Alerts</div>
+                        <div class="stat-sub">Deviation detected</div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- MAIN GRID -->
+            <div class="main-grid">
+
+                <!-- LEFT COLUMN -->
+                <div style="display:flex;flex-direction:column;gap:16px;">
+
+                    <!-- LIVE MAP CARD -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+                                </svg>
+                                Live Field Map
+                            </div>
+                            <div class="card-badges">
+                                <span class="pill live"><span class="pill-dot"/><t t-esc="live_count"/> Live</span>
+                                <span class="pill idle"><span class="pill-dot"/><t t-esc="idle_count"/> Idle</span>
+                                <span class="pill offline"><span class="pill-dot"/><t t-esc="offline_count"/> Offline</span>
+                            </div>
+                        </div>
+                        <div class="map-container">
+                            <div id="live-map"></div>
+                            <button class="map-refresh-btn" onclick="dashRefreshMap()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
+                                </svg>
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- FIELD REPS TABLE -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                                </svg>
+                                Field Representatives
+                            </div>
+                            <span style="font-size:12px;color:var(--muted);"><t t-esc="len(rows)"/> rep(s)</span>
+                        </div>
+                        <div class="reps-table-wrap">
+                            <table class="reps-table">
+                                <thead>
+                                    <tr>
+                                        <th>Representative</th>
+                                        <th>Status</th>
+                                        <th>Stage</th>
+                                        <th>Coverage</th>
+                                        <th>Distance</th>
+                                        <th>Last Seen</th>
+                                        <th>Map</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <t t-foreach="rows" t-as="row">
+                                        <tr>
+                                            <td>
+                                                <div class="rep-info">
+                                                    <div class="rep-avatar" t-attf-style="background: #{row['gradient']};">
+                                                        <t t-esc="row['initials']"/>
+                                                    </div>
+                                                    <div>
+                                                        <div class="rep-name"><t t-esc="row['name']"/></div>
+                                                        <div class="rep-team"><t t-esc="row['team']"/></div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span t-attf-class="status-badge #{row['status']}">
+                                                    <span class="status-dot"/>
+                                                    <t t-esc="row['status'].capitalize()"/>
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span class="stage-badge"><t t-esc="row['state'].capitalize()"/></span>
+                                            </td>
+                                            <td>
+                                                <div class="coverage-bar-wrap">
+                                                    <div class="coverage-bar">
+                                                        <div class="coverage-fill" t-attf-style="width: #{row['pct']}%;"/>
+                                                    </div>
+                                                    <span class="coverage-pct"><t t-esc="row['covered']"/>/<t t-esc="row['total']"/></span>
+                                                </div>
+                                            </td>
+                                            <td><span class="dist-val"><t t-esc="row['distance']"/></span></td>
+                                            <td><span class="last-seen-val"><t t-esc="row['last_seen']"/></span></td>
+                                            <td>
+                                                <a t-attf-href="/salesperson_tracking/moving_map/#{row['id']}" class="map-link" target="_blank">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                        <path d="M12 22s8-5.5 8-12a8 8 0 1 0-16 0c0 6.5 8 12 8 12z"/><circle cx="12" cy="10" r="3"/>
+                                                    </svg>
+                                                    View
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    </t>
+                                    <t t-if="not rows">
+                                        <tr>
+                                            <td colspan="7" style="text-align:center;padding:28px;color:var(--muted);font-size:13px;">
+                                                No field representatives found.
+                                            </td>
+                                        </tr>
+                                    </t>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- RIGHT COLUMN -->
+                <div style="display:flex;flex-direction:column;gap:16px;">
+
+                    <!-- LIVE ACTIVITY -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                                </svg>
+                                Live Activity
+                            </div>
+                            <span style="font-size:11px;color:var(--muted);"><t t-esc="today"/></span>
+                        </div>
+                        <div class="activity-list">
+                            <t t-if="activity_feed">
+                                <t t-foreach="activity_feed" t-as="act">
+                                    <div class="activity-item">
+                                        <div class="activity-dot" t-attf-style="background: #{act['dot_color']};"/>
+                                        <div class="activity-body">
+                                            <div class="activity-name"><t t-esc="act['name']"/></div>
+                                            <div class="activity-desc"><t t-esc="act['desc']"/></div>
+                                        </div>
+                                        <div class="activity-time"><t t-esc="act['time']"/></div>
+                                    </div>
+                                </t>
+                            </t>
+                            <t t-else="">
+                                <div class="activity-empty">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                                    </svg>
+                                    No activity recorded today yet.
+                                </div>
+                            </t>
+                        </div>
+                    </div>
+
+                    <!-- TODAY'S KPI -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+                                </svg>
+                                Today's KPI
+                            </div>
+                            <span style="font-size:11px;color:var(--muted);"><t t-esc="today"/></span>
+                        </div>
+                        <div class="kpi-panel">
+                            <div class="kpi-donut-wrap">
+                                <!-- Donut chart via SVG -->
+                                <div style="position:relative;width:100px;height:100px;">
+                                    <svg width="100" height="100" viewBox="0 0 100 100">
+                                        <circle cx="50" cy="50" r="38" fill="none" stroke="#E2E8F0" stroke-width="10"/>
+                                        <circle cx="50" cy="50" r="38" fill="none"
+                                            stroke="#2563EB" stroke-width="10"
+                                            stroke-linecap="round"
+                                            t-attf-stroke-dasharray="#{kpi_pct * 2.388} 238.8"
+                                            stroke-dashoffset="59.7"
+                                            transform="rotate(-90 50 50)"
+                                            style="transition: stroke-dasharray .6s ease;"/>
+                                    </svg>
+                                    <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                                        <div style="font-size:20px;font-weight:700;color:var(--text);line-height:1;"><t t-esc="kpi_pct"/>%</div>
+                                        <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:2px;">Coverage</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="kpi-stats">
+                                <div class="kpi-stat">
+                                    <div class="kpi-stat-num green"><t t-esc="kpi_covered"/></div>
+                                    <div class="kpi-stat-lbl">Covered</div>
+                                </div>
+                                <div class="kpi-stat">
+                                    <div class="kpi-stat-num amber"><t t-esc="kpi_in_progress"/></div>
+                                    <div class="kpi-stat-lbl">Pending</div>
+                                </div>
+                                <div class="kpi-stat">
+                                    <div class="kpi-stat-num rose"><t t-esc="kpi_missed"/></div>
+                                    <div class="kpi-stat-lbl">Missed</div>
+                                </div>
+                                <div class="kpi-stat">
+                                    <div class="kpi-stat-num"><t t-esc="total_planned"/></div>
+                                    <div class="kpi-stat-lbl">Total</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PERSONAL STATS (salesperson only) -->
+                    <t t-if="not is_manager and my_tracker">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                                    </svg>
+                                    My Today Stats
+                                </div>
+                                <span t-attf-class="status-badge #{my_status}">
+                                    <span class="status-dot"/>
+                                    <t t-esc="my_status.capitalize()"/>
+                                </span>
+                            </div>
+                            <div class="personal-grid">
+                                <div class="personal-card">
+                                    <div class="personal-icon green">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <div class="personal-val"><t t-esc="my_dist"/> km</div>
+                                        <div class="personal-lbl">Distance</div>
+                                    </div>
+                                </div>
+                                <div class="personal-card">
+                                    <div class="personal-icon blue">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <div class="personal-val"><t t-esc="my_covered"/>/<t t-esc="my_total"/></div>
+                                        <div class="personal-lbl">Visits</div>
+                                    </div>
+                                </div>
+                                <div class="personal-card">
+                                    <div class="personal-icon amber">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <div class="personal-val" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:90px;"><t t-esc="my_location"/></div>
+                                        <div class="personal-lbl">Location</div>
+                                    </div>
+                                </div>
+                                <div class="personal-card">
+                                    <div class="personal-icon violet">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.36 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.07 6.07l1.38-1.38a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <div class="personal-val"><t t-esc="my_checkins_today"/></div>
+                                        <div class="personal-lbl">Check-ins</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="padding:0 20px 16px;">
+                                <a href="/salesperson_tracking/live" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;background:linear-gradient(135deg,#2563EB,#4F46E5);color:#fff;border-radius:var(--radius-md);text-decoration:none;font-size:13px;font-weight:600;transition:opacity .15s;" onmouseover="this.style.opacity='.88'" onmouseout="this.style.opacity='1'">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
+                                        <path d="M12 22s8-5.5 8-12a8 8 0 1 0-16 0c0 6.5 8 12 8 12z"/><circle cx="12" cy="10" r="3"/>
+                                    </svg>
+                                    Open My Tracker
+                                </a>
+                            </div>
+                        </div>
+                    </t>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        'use strict';
+
+        // ── MAP INIT ────────────────────────────────────────────────
+        var map = L.map('live-map', {
+            zoomControl: true,
+            attributionControl: true,
+        }).setView([23.7701, 90.4254], 12);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            maxZoom: 19,
+        }).addTo(map);
+
+        var markers = {};
+        var allLatLngs = [];
+
+        // Status colors
+        var statusColors = {
+            live:    '#059669',
+            idle:    '#D97706',
+            offline: '#94A3B8',
+        };
+
+        function makeIcon(status, initials) {
+            var bg = status === 'live' ? '#16A34A' : '#EAB308';
+            var pulse = status === 'live'
+                ? '<circle cx="21" cy="21" r="19" fill="none" stroke="#16A34A" stroke-width="2" opacity="0.4"><animate attributeName="r" from="19" to="26" dur="1.8s" repeatCount="indefinite"/><animate attributeName="opacity" from="0.4" to="0" dur="1.8s" repeatCount="indefinite"/></circle>'
+                : '';
+
+            var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" viewBox="0 0 42 42">'
+                + pulse
+                + '<circle cx="21" cy="21" r="18" fill="' + bg + '" stroke="#ffffff" stroke-width="3"/>'
+                + '<text x="21" y="26" text-anchor="middle" font-size="12" font-weight="bold" font-family="Arial,sans-serif" fill="#ffffff">' + initials + '</text>'
+                + '</svg>';
+
+            return L.divIcon({
+                html:        svg,
+                iconSize:    [42, 42],
+                iconAnchor:  [21, 21],
+                popupAnchor: [0, -22],
+                className:   'x-marker',
+            });
+        }
+
+        function loadMap() {
+            fetch('/salesperson/dashboard/data')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (!data.ok) return;
+
+                    // Clear old markers
+                    Object.values(markers).forEach(function(m) { map.removeLayer(m); });
+                    markers = {};
+                    allLatLngs = [];
+
+                    data.trackers.forEach(function(t) {
+                        if (!t.lat || !t.lng) return;
+                        allLatLngs.push([t.lat, t.lng]);
+
+                        var icon = makeIcon(t.status, t.initials);
+                        var m = L.marker([t.lat, t.lng], { icon: icon })
+                            .bindPopup(
+                                '<div style="font-family:DM Sans,sans-serif;min-width:160px;">'
+                                + '<div style="font-weight:600;font-size:13px;margin-bottom:4px;">' + (t.name || '') + '</div>'
+                                + '<div style="font-size:11px;color:#64748B;margin-bottom:6px;">' + (t.location || '—') + '</div>'
+                                + '<div style="display:flex;gap:6px;align-items:center;">'
+                                + '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:600;background:' + (t.status === 'live' ? '#ECFDF5' : t.status === 'idle' ? '#FFFBEB' : '#F1F5F9') + ';color:' + (statusColors[t.status] || '#64748B') + ';">'
+                                + t.status.charAt(0).toUpperCase() + t.status.slice(1)
+                                + '</span>'
+                                + '<span style="font-size:11px;color:#64748B;">' + t.covered + '/' + t.total + ' visits</span>'
+                                + '</div></div>'
+                            )
+                            .addTo(map);
+                        markers[t.id] = m;
+                    });
+
+                    if (allLatLngs.length === 1) {
+                        map.setView(allLatLngs[0], 14);
+                    } else if (allLatLngs.length > 1) {
+                        map.fitBounds(L.latLngBounds(allLatLngs), { padding: [50, 50] });
+                    }
+
+                    setTimeout(function() { map.invalidateSize(); }, 200);
+                })
+                .catch(function(e) { console.warn('Map load error:', e); });
+        }
+
+        // ── CSS for pulse animation ──
+        var styleEl = document.createElement('style');
+        styleEl.textContent = '@keyframes pulse-ring { 0%{transform:scale(1);opacity:.5} 100%{transform:scale(2);opacity:0} }';
+        document.head.appendChild(styleEl);
+
+        // Initial load
+        loadMap();
+
+        // Auto-refresh every 30s
+        setInterval(loadMap, 30000);
+
+        // Public refresh function
+        window.dashRefreshMap = function() { loadMap(); };
+
+    })();
+    </script>
+</t>
+</template>
+</odoo>

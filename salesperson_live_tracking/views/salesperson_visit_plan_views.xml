@@ -1,0 +1,323 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_salesperson_visit_plan_list" model="ir.ui.view">
+        <field name="name">salesperson.visit.plan.list</field>
+        <field name="model">salesperson.visit.plan</field>
+        <field name="arch" type="xml">
+            <list string="Planned Visits"
+                  decoration-success="is_covered"
+                  decoration-danger="not is_covered"
+                  class="o_list_compact">
+                <field name="name" width="200"/>
+                <field name="sequence" widget="handle" width="200"/>
+                <field name="visit_date" width="200"/>
+                <field name="user_id" string="SalesPerson Leader" width="200"/>
+                <field name="sale_team_id" optional="show" width="200"/>
+                <field name="is_covered" column_invisible="1" width="200"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_users_form_inherit_role" model="ir.ui.view">
+        <field name="name">res.users.form.inherit.role</field>
+        <field name="model">res.users</field>
+        <field name="inherit_id" ref="base.view_users_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet" position="inside">
+                <group string="Custom Role">
+                    <field name="is_manager"/>
+                    <field name="is_salesperson"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+   
+    <record id="view_salesperson_visit_plan_kanban" model="ir.ui.view">
+        <field name="name">salesperson.visit.plan.kanban</field>
+        <field name="model">salesperson.visit.plan</field>
+        <field name="arch" type="xml">
+
+            <kanban class="o_kanban_mobile" default_group_by="state">
+                <field name="name"/>
+                <field name="state"/>
+                <field name="visit_date"/>
+                <field name="user_id"/>
+                <field name="sale_team_id"/>
+                <field name="purpose"/>
+                <field name="priority"/>
+                <field name="partner_ids" widget="many2many_tags"/>
+                <field name="is_covered"/>
+                <field name="checkin_time"/>
+                <field name="checkout_time"/>
+                <field name="stay_minutes"/>
+                <field name="total_expense"/>
+                <templates>
+                    <t t-name="card">
+                        <div t-attf-class="o_kanban_reMarc Democord #{!record.is_covered.raw_value and 'border-start border-primary border-3' or ''}"
+                            style="border-radius:10px; padding:12px; font-size:12px; background:#fff;">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+
+                                <div class="d-flex align-items-center gap-2">
+                                    <div t-attf-class="rounded-circle d-flex align-items-center justify-content-center fw-semibold flex-shrink-0
+                                        #{record.state.raw_value == 'submitted' ? 'bg-warning text-dark' :
+                                        record.state.raw_value == 'rejected'  ? 'bg-danger-subtle text-danger' :
+                                        record.state.raw_value == 'done'      ? 'bg-success-subtle text-success' :
+                                        'bg-secondary-subtle text-secondary'}"
+                                        style="width:32px;height:32px;font-size:11px;">
+                                        <t t-esc="record.user_id.value ? record.user_id.value[0] : ''"/>
+                                    </div>
+                                    <div style="line-height:1.2;">
+                                        <div style="font-size:12px;font-weight:600;">
+                                            <field name="user_id"/>
+                                        </div>
+                                        <div class="text-muted" style="font-size:10px;">
+                                            <field name="sale_team_id"/>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="d-flex flex-column align-items-end gap-1">
+
+                                    <span t-attf-class="badge rounded-pill
+                                        #{record.state.raw_value == 'draft'     ? 'text-bg-secondary' :
+                                        record.state.raw_value == 'submitted' ? 'text-bg-warning' :
+                                        record.state.raw_value == 'rejected'  ? 'text-bg-danger' :
+                                        'text-bg-success'}"
+                                        style="font-size:9px;padding:3px 8px;">
+                                        <t t-esc="record.state.value"/>
+                                    </span>
+
+                                    <span t-attf-class="badge rounded-pill
+                                        #{record.priority.raw_value == '2' ? 'text-bg-danger' :
+                                        record.priority.raw_value == '1' ? 'text-bg-warning' :
+                                        'text-bg-light text-dark border'}"
+                                        style="font-size:9px;padding:3px 8px;">
+                                        <t t-if="record.priority.raw_value == '2'">High</t>
+                                        <t t-elif="record.priority.raw_value == '1'">Med</t>
+                                        <t t-else="">Normal</t>
+                                    </span>
+                                    <span t-if="!record.is_covered.raw_value"
+                                        class="badge text-bg-primary"
+                                        style="font-size:9px;padding:3px 8px;">
+                                        Not Covered
+                                    </span>
+
+                                </div>
+                            </div>
+
+                            <hr class="my-1 opacity-25"/>
+
+                            <!-- Plan Name -->
+                            <div style="font-size:13px;font-weight:700;color:#1a1a2e;margin:6px 0 3px;">
+                                <field name="name"/>
+                            </div>
+
+                            <!-- Date + Purpose -->
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="text-muted" style="font-size:10px;">
+                                    <field name="visit_date"/>
+                                </span>
+                                <span class="badge rounded-pill"
+                                    style="font-size:9px;padding:3px 8px;background:#e8f4fd;color:#1a6fa8;border:1px solid #b8dcf5;">
+                                    <field name="purpose"/>
+                                </span>
+                            </div>
+
+                            <!-- Partners -->
+                            <div style="font-size:10px;margin-bottom:8px;">
+                                <field name="partner_ids" widget="many2many_tags"
+                                    options="{'color_field': 'color'}"/>
+                            </div>
+
+                            <!-- Stats Row -->
+                            <div class="d-flex gap-2 mb-2">
+                                <div class="flex-fill text-center rounded-2 p-1"
+                                    style="background:#f0f4f8;">
+                                    <div class="text-muted" style="font-size:9px;">Stay</div>
+                                    <div style="font-size:12px;font-weight:700;color:#2d6a9f;">
+                                        <field name="stay_minutes"/>
+                                    </div>
+                                </div>
+                                <div class="flex-fill text-center rounded-2 p-1"
+                                    style="background:#f0f9f4;">
+                                    <div class="text-muted" style="font-size:9px;">Expense</div>
+                                    <div style="font-size:12px;font-weight:700;color:#1a7a4a;">
+                                        <field name="total_expense"/>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Checkin / Checkout Times -->
+                            <div class="d-flex justify-content-between"
+                                style="font-size:10px;color:#6c757d;background:#f8f9fa;border-radius:6px;padding:4px 8px;">
+                                <span>
+                                    <i class="fa fa-sign-in me-1 text-success"/>
+                                    <field name="checkin_time"/>
+                                </span>
+                                <span>
+                                    <i class="fa fa-sign-out me-1 text-danger"/>
+                                    <field name="checkout_time"/>
+                                </span>
+                            </div>
+
+                            <!-- Action Buttons -->
+                            <div class="d-flex gap-1 mt-2 flex-wrap">
+                                <t t-if="record.state.raw_value == 'draft'">
+                                    <button type="object" name="action_submit"
+                                            class="btn btn-primary btn-sm w-100"
+                                            style="font-size:10px;padding:4px;border-radius:6px;font-weight:600;">
+                                        <i class="fa fa-paper-plane me-1"/> Submit
+                                    </button>
+                                </t>
+                                <t t-if="['rejected','done'].includes(record.state.raw_value)">
+                                    <button type="object" name="action_reset_draft"
+                                            class="btn btn-outline-secondary btn-sm w-100"
+                                            style="font-size:10px;padding:4px;border-radius:6px;">
+                                        <i class="fa fa-undo me-1"/> Reset
+                                    </button>
+                                </t>
+                                <t t-if="!['done','visited','rejected','planned','draft'].includes(record.state.raw_value) and record.user_id.raw_value == uid">
+                                    <button type="object" name="action_open_live_tracking_page"
+                                            class="btn btn-sm btn-primary flex-grow-1"
+                                            style="font-size:10px;padding:4px;border-radius:6px;">
+                                        Live Page
+                                    </button>
+                                </t>
+                                <button type="object" name="action_open_moving_map_view"
+                                        class="btn btn-sm btn-outline-primary flex-grow-1"
+                                        style="font-size:10px;padding:4px;border-radius:6px;">
+                                    <i class="fa fa-map-marker me-1"/> Map
+                                </button>
+                            </div>
+
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+
+        </field>
+    </record>
+
+    <record id="view_salesperson_visit_plan_form" model="ir.ui.view">
+        <field name="name">salesperson.visit.plan.form</field>
+        <field name="model">salesperson.visit.plan</field>
+        <field name="arch" type="xml">
+            <form string="Planned Visit">
+                <header>
+                    <button name="action_submit"
+                        string="Submit Request"
+                        type="object"
+                        class="oe_highlight btn-primary"
+                        icon="fa-paper-plane"
+                        invisible="state != 'draft'"/>
+                    <button name="action_reset_draft"
+                        string="Reset to Draft"
+                        type="object"
+                        class="btn-secondary"
+                        icon="fa-refresh"
+                        invisible="state not in ('submitted','rejected','done')"/>
+
+                    <field name="state"
+                        widget="statusbar"
+                        statusbar_visible="draft,submitted,accepted,rejected,done"/>
+
+                </header>
+                
+                <sheet>
+                     <group string="Basic Informations">
+                        <group>
+                            <field name="user_id"/>
+                            <field name="visit_date"/>
+                        </group>
+                        <group>
+
+                            <field name="purpose"/>
+                            <field name="priority"/>
+                        </group>
+                
+                            <field name="partner_ids" widget="many2many_tags" string="Customers"/>
+
+                        </group>
+
+                        <group string="Location and coverage">
+                        
+                        <group>
+                            <field name="location_name" string="Location Name"/>
+                            <field name="latitude" string="Latitude"/>
+                        </group>
+        
+                        <group>
+                            <field name="radius_meters" string="Radius (meters)"/>
+                            <field name="longitude" string="Longitude"/>
+                        </group>
+
+                        </group>
+
+
+                    <group string="Check-in / Check-out">
+                        <group>
+                            <field name="checkin_time"/>
+                            <field name="checkout_time"/>
+                        </group>
+
+                        <group>
+                            <field name="stay_minutes" readonly="1"/>
+                        </group>
+                    </group>
+
+                    <group string="Expenses">
+                            <group>
+                                <field name="expense_transport" string="Transport Cost"/>
+                                <field name="expense_food" string="Food Cost"/>
+                                <field name="expense_other" string="Other Cost"/>
+                            </group>
+
+                            <group>
+                                <field name="total_expense" string="Total" readonly="1"/>
+                            </group>
+                    </group>
+
+
+                    <notebook>
+                        <page string="Travel Lines">
+                            <field name="space_line_ids">
+                                <list editable="bottom">
+                                    <field name="visit_date"/>
+                                    <field name="partner_id"/>
+                                    <field name="from_location"/>
+                                    <field name="to_location"/>
+                                    <field name="total_cost"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+        
+                <chatter/>
+
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ACTIONS -->
+    <record id="action_salesperson_visit_plan" model="ir.actions.act_window">
+        <field name="name">Planned Visits</field>
+        <field name="res_model">salesperson.visit.plan</field>
+        <field name="view_mode">kanban,list,form</field>
+    </record>
+
+    <record id="action_salesperson_visit_plan_my" model="ir.actions.act_window">
+        <field name="name">My Planned Visits</field>
+        <field name="res_model">salesperson.visit.plan</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="domain">[('user_id', '=', uid)]</field>
+        <field name="context">{'default_user_id': uid}</field>
+    </record>
+
+
+     <record id="action_salesperson_dashboard" model="ir.actions.act_url">
+        <field name="name">Live Tracking Dashboard</field>
+        <field name="url">/salesperson/dashboard</field>
+        <field name="target">self</field> 
+    </record>
+</odoo>

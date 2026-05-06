@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_res_users_salesperson_tracker" model="ir.ui.view">
+        <field name="name">res.users.salesperson.tracker</field>
+        <field name="model">res.users</field>
+        <field name="inherit_id" ref="base.view_users_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Salesperson Tracking" name="salesperson_tracking"
+                      groups="salesperson_live_tracking.group_salesperson_tracking_manager">
+                    <group>
+                        <field name="salesperson_tracker_id" readonly="1">
+                            <list>
+                                <field name="tracking_status"/>
+                                <field name="last_seen"/>
+                                <field name="location_name"/>
+                                <field name="today_plan_count"/>
+                                <field name="today_covered_count"/>
+                                <field name="kpi_visit_completion_rate" string="Completion %"/>
+                            </list>
+                        </field>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

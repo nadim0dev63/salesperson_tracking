@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="rule_tracker_own_only" model="ir.rule">
+        <field name="name">Salesperson Tracker: Own Records Only</field>
+        <field name="model_id" ref="model_salesperson_tracker"/>
+        <field name="domain_force">[('user_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('salesperson_live_tracking.group_salesperson_tracking_user'))]"/>
+        <field name="perm_read"   eval="True"/>
+        <field name="perm_write"  eval="True"/>
+        <field name="perm_create" eval="True"/>
+        <field name="perm_unlink" eval="True"/>
+    </record>
+
+    <record id="rule_tracker_manager_all" model="ir.rule">
+        <field name="name">Salesperson Tracker: Manager Full Access</field>
+        <field name="model_id" ref="model_salesperson_tracker"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('salesperson_live_tracking.group_salesperson_tracking_manager'))]"/>
+        <field name="perm_read"   eval="True"/>
+        <field name="perm_write"  eval="True"/>
+        <field name="perm_create" eval="True"/>
+        <field name="perm_unlink" eval="True"/>
+    </record>
+
+    <record id="rule_visit_plan_own_only" model="ir.rule">
+        <field name="name">Visit Plan: Own Records Only</field>
+        <field name="model_id" ref="model_salesperson_visit_plan"/>
+        <field name="domain_force">[('user_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('salesperson_live_tracking.group_salesperson_tracking_user'))]"/>
+        <field name="perm_read"   eval="True"/>
+        <field name="perm_write"  eval="True"/>
+        <field name="perm_create" eval="True"/>
+        <field name="perm_unlink" eval="True"/>
+    </record>
+
+    <record id="rule_visit_plan_manager_all" model="ir.rule">
+        <field name="name">Visit Plan: Manager Full Access</field>
+        <field name="model_id" ref="model_salesperson_visit_plan"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('salesperson_live_tracking.group_salesperson_tracking_manager'))]"/>
+        <field name="perm_read"   eval="True"/>
+        <field name="perm_write"  eval="True"/>
+        <field name="perm_create" eval="True"/>
+        <field name="perm_unlink" eval="True"/>
+    </record>
+
+</odoo>

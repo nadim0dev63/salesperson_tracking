@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- KPI List View -->
+    <record id="view_salesperson_kpi_tree" model="ir.ui.view">
+        <field name="name">salesperson.kpi.tree</field>
+        <field name="model">salesperson.kpi</field>
+        <field name="arch" type="xml">
+            <list string="KPI Summary"  class="o_list_compact">
+                <field name="date"/>
+                <field name="user_id"/>
+                
+            </list>
+        </field>
+    </record>
+
+    <record id="action_salesperson_kpi" model="ir.actions.act_window">
+        <field name="name">KPI Dashboard</field>
+        <field name="res_model">salesperson.kpi</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{}</field>
+    </record>
+</odoo>

@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Check-In List View -->
+    <record id="view_salesperson_checkin_tree" model="ir.ui.view">
+        <field name="name">salesperson.checkin.tree</field>
+        <field name="model">salesperson.checkin</field>
+        <field name="arch" type="xml">
+            <list string="Check-Ins / Check-Outs"
+                  decoration-success="state == 'checked_out'"
+                  decoration-info="state == 'checked_in'" class="o_list_compact">
+                <field name="name"/>
+                <field name="user_id"/>
+                <field name="location_name"/>
+                <field name="checkin_time"/>
+                <field name="checkout_time" optional="show"/>
+                <field name="duration_display" string="Time Spent"/>
+                <field name="state"/>
+                <field name="meeting_outcome" optional="show"/>
+                <field name="selfie_image" widget="image" optional="show" string="Selfie"/>
+                <field name="partner_id" optional="show"/>
+                <field name="crm_lead_id" optional="show"/>
+            </list>
+        </field>
+    </record>
+    
+    <record id="view_salesperson_checkin_form" model="ir.ui.view">
+        <field name="name">salesperson.checkin.form</field>
+        <field name="model">salesperson.checkin</field>
+        <field name="arch" type="xml">
+            <form string="Check-In / Check-Out">
+                <header>
+                    <button name="action_checkout" type="object" string="Check Out"
+                            class="btn-primary"
+                            invisible="state == 'checked_out'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="checked_in,checked_out"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group string="Visit Info">
+                            <field name="tracker_id"/>
+                            <field name="user_id" readonly="1"/>
+                            <field name="visit_plan_id"/>
+                            <field name="location_name"/>
+                        </group>
+                        <group string="Timing">
+                            <field name="checkin_time"/>
+                            <field name="checkout_time"/>
+                            <field name="duration_display" string="Time Spent" readonly="1"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group string="Check-In Location">
+                            <field name="checkin_latitude"/>
+                            <field name="checkin_longitude"/>
+                            <field name="checkin_map_url" widget="url" string="View on Map"/>
+                        </group>
+                        <group string="Check-Out Location">
+                            <field name="checkout_latitude"/>
+                            <field name="checkout_longitude"/>
+                            <field name="checkout_map_url" widget="url" string="View on Map"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Selfie Proof" name="selfie">
+                            <group>
+                                <group>
+                                    <field name="selfie_image" widget="image" string="Geo-Tagged Selfie"
+                                           options="{'size': [256, 256]}"/>
+                                </group>
+                                <group>
+                                    <field name="selfie_taken_at" string="Captured At"/>
+                                    <field name="selfie_latitude" string="Selfie Latitude"/>
+                                    <field name="selfie_longitude" string="Selfie Longitude"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="Activity Notes" name="notes">
+                            <group>
+                                <field name="meeting_outcome"/>
+                            </group>
+                            <group>
+                                <field name="notes" string="Activity Notes" nolabel="1"
+                                       placeholder="Enter meeting notes, observations, or action items…"/>
+                            </group>
+                            <group>
+                                <field name="customer_feedback" string="Customer Feedback" nolabel="1"
+                                       placeholder="Enter customer feedback or comments…"/>
+                            </group>
+                        </page>
+                        <page string="CRM Integration" name="crm">
+                            <group>
+                                <group>
+                                    <field name="partner_id"/>
+                                    <field name="crm_lead_id" string="CRM Opportunity / Lead"/>
+                                </group>
+                                <group>
+                                    <field name="sale_order_id" string="Sale Order"/>
+                                </group>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+    
+    <record id="action_salesperson_checkin_my" model="ir.actions.act_window">
+        <field name="name">My Check-Ins</field>
+        <field name="res_model">salesperson.checkin</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('user_id', '=', uid)]</field>
+        <field name="context">{'default_user_id': uid, 'search_default_today': 1}</field>
+    </record>
+</odoo>

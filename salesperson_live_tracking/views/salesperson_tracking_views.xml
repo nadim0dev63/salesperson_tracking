@@ -1,0 +1,482 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_salesperson_tracker_tree" model="ir.ui.view">
+        <field name="name">salesperson.tracker.tree</field>
+        <field name="model">salesperson.tracker</field>
+        <field name="arch" type="xml">
+         <list string="Salesperson Tracking"
+            decoration-success="state == 'done'"
+            decoration-primary="state == 'accepted'"
+            decoration-info="state == 'visited'"
+            decoration-danger="state == 'rejected'"
+            decoration-muted="tracking_status == 'offline'" class="o_list_compact">
+                <field name="user_id" width="200"/>
+                <field name="sale_team_id" optional="show" width="200"/>
+                <field name="tracking_status" width="200"/>
+                <field name="state" width="200"/>
+                <field name="last_seen"/>
+                <field name="last_accuracy" optional="show" width="200"/>
+                <field name="last_speed" optional="hide" width="200"/>
+                <field name="today_plan_count" optional="show" width="200"/>
+                <field name="today_covered_count" optional="show" width="200"/>
+                <field name="kpi_visit_completion_rate" string="Completion %" optional="show" width="200"/>
+                <field name="location_name" optional="show" width="200"/>
+                <field name="latitude" optional="show" width="200"/>
+                <field name="longitude" optional="show" width="200"/>
+                <field name="route_deviation_alert" optional="show" string="Deviation Alert" width="200"/>
+            </list>
+        </field>
+    </record>
+
+   <record id="view_salesperson_tracker_kanban" model="ir.ui.view">
+    <field name="name">salesperson.tracker.kanban</field>
+    <field name="model">salesperson.tracker</field>
+    <field name="arch" type="xml">
+        <kanban class="o_kanban_mobile">
+            <field name="user_id"/>
+            <field name="sale_team_id"/>
+            <field name="tracking_status"/>
+            <field name="tracking_status_label"/>
+            <field name="last_seen"/>
+            <field name="last_accuracy"/>
+            <field name="latitude"/>
+            <field name="longitude"/>
+            <field name="history_count"/>
+            <field name="today_plan_count"/>
+            <field name="today_covered_count"/>
+            <field name="kpi_visit_completion_rate"/>
+            <field name="location_name"/>
+            <field name="route_deviation_alert"/>
+            <field name="state"/>
+            <templates>
+                <t t-name="card">
+                    <div t-attf-class="o_kanban_record #{record.route_deviation_alert.raw_value and 'border-start border-danger border-3' or ''}"
+                         style="border-radius:10px;padding:12px;font-size:12px;background:#fff;">
+
+                        <!-- Header: Avatar + Name + Badges -->
+                        <div class="d-flex align-items-start justify-content-between mb-2">
+                            <div class="d-flex align-items-center gap-2">
+                                <div t-attf-class="rounded-circle d-flex align-items-center justify-content-center fw-semibold flex-shrink-0
+                                    #{record.tracking_status.raw_value == 'live' and 'bg-success-subtle text-success' or
+                                      record.tracking_status.raw_value == 'idle' and 'bg-warning-subtle text-warning' or
+                                      'bg-secondary-subtle text-secondary'}"
+                                     style="width:36px;height:36px;font-size:12px;">
+                                    <t t-esc="record.user_id.value ? record.user_id.value[0] : ''"/>
+                                </div>
+                                <div style="line-height:1.2;">
+                                    <div style="font-size:13px;font-weight:600;">
+                                        <field name="user_id"/>
+                                    </div>
+                                    <div class="text-muted" style="font-size:10px;">
+                                        <field name="sale_team_id"/>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="d-flex flex-column align-items-end gap-1">
+
+                                <!-- Tracking Status Badge -->
+                                <span t-attf-class="badge rounded-pill d-flex align-items-center gap-1
+                                    #{record.tracking_status.raw_value == 'live' and 'text-bg-success' or
+                                      record.tracking_status.raw_value == 'idle' and 'text-bg-warning' or
+                                      'text-bg-secondary'}"
+                                      style="font-size:10px;padding:3px 8px;">
+                                    <span class="rounded-circle"
+                                          style="width:6px;height:6px;background:currentColor;display:inline-block;"/>
+                                    <field name="tracking_status_label"/>
+                                </span>
+
+                                <!-- State Badge -->
+                                <span t-attf-class="badge rounded-pill
+                                    #{record.state.raw_value == 'planned'  and 'text-bg-primary'   or
+                                      record.state.raw_value == 'accepted' and 'text-bg-success'   or
+                                      record.state.raw_value == 'rejected' and 'text-bg-danger'    or
+                                      record.state.raw_value == 'visited'  and 'text-bg-info'      or
+                                      record.state.raw_value == 'done'     and 'text-bg-dark'      or
+                                      'text-bg-secondary'}"
+                                      style="font-size:10px;padding:3px 8px;">
+                                    <t t-if="record.state.raw_value == 'planned'">Planned</t>
+                                    <t t-elif="record.state.raw_value == 'accepted'">Accepted</t>
+                                    <t t-elif="record.state.raw_value == 'rejected'">Rejected</t>
+                                    <t t-elif="record.state.raw_value == 'visited'">Visited</t>
+                                    <t t-elif="record.state.raw_value == 'done'">Done</t>
+                                    <t t-else=""><field name="state"/></t>
+                                </span>
+
+                                <!-- Deviation Badge -->
+                                <span t-if="record.route_deviation_alert.raw_value"
+                                      class="badge rounded-pill text-bg-danger"
+                                      style="font-size:10px;padding:3px 8px;">
+                                    Deviation
+                                </span>
+
+                            </div>
+                        </div>
+
+                        <hr class="my-1 opacity-25"/>
+
+                        <!-- Location -->
+                        <div class="d-flex align-items-center gap-1 text-muted mb-1"
+                             style="font-size:11px;">
+                            <i class="fa fa-map-marker me-1"/>
+                            <field name="location_name"/>
+                        </div>
+
+                        <!-- Last Seen + Accuracy -->
+                        <div class="d-flex justify-content-between align-items-center mb-2"
+                             style="font-size:11px;">
+                            <span class="text-muted">
+                                <i class="fa fa-clock-o me-1"/>
+                                <field name="last_seen"/>
+                            </span>
+                            <span class="badge text-bg-light border text-muted"
+                                  style="font-size:10px;font-weight:400;">
+                                &#177;<field name="last_accuracy"/> m
+                            </span>
+                        </div>
+
+                        <!-- Stats Row -->
+                        <div class="d-flex justify-content-between text-center mb-2">
+                            <div class="flex-fill rounded-2 p-1 me-1"
+                                 style="background:#f0f4f8;">
+                                <div class="text-muted text-uppercase"
+                                     style="font-size:9px;letter-spacing:.04em;">Planned</div>
+                                <strong style="font-size:15px;">
+                                    <field name="today_plan_count"/>
+                                </strong>
+                            </div>
+                            <div class="flex-fill rounded-2 p-1 me-1"
+                                 style="background:#f0f9f4;">
+                                <div class="text-muted text-uppercase"
+                                     style="font-size:9px;letter-spacing:.04em;">Covered</div>
+                                <strong style="font-size:15px;">
+                                    <field name="today_covered_count"/>
+                                </strong>
+                            </div>
+                            <div class="flex-fill rounded-2 p-1"
+                                 style="background:#f5f0f8;">
+                                <div class="text-muted text-uppercase"
+                                     style="font-size:9px;letter-spacing:.04em;">Logs</div>
+                                <strong style="font-size:15px;">
+                                    <field name="history_count"/>
+                                </strong>
+                            </div>
+                        </div>
+
+                        <!-- Visit Rate Progress Bar -->
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="text-muted text-uppercase"
+                                      style="font-size:9px;letter-spacing:.04em;">Visit rate</span>
+                                <strong t-attf-class="
+                                    #{record.kpi_visit_completion_rate.raw_value >= 75 and 'text-success' or
+                                      record.kpi_visit_completion_rate.raw_value >= 40 and 'text-warning' or
+                                      'text-danger'}"
+                                        style="font-size:11px;">
+                                    <field name="kpi_visit_completion_rate"/>%
+                                </strong>
+                            </div>
+                            <div class="rounded-pill overflow-hidden"
+                                 style="height:5px;background:rgba(0,0,0,0.08);">
+                                <div t-attf-class="h-100 rounded-pill
+                                    #{record.kpi_visit_completion_rate.raw_value >= 75 and 'bg-success' or
+                                      record.kpi_visit_completion_rate.raw_value >= 40 and 'bg-warning' or
+                                      'bg-danger'}"
+                                     t-attf-style="width:#{record.kpi_visit_completion_rate.raw_value}%;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="d-flex gap-2 flex-wrap mt-2">
+                            <button type="object" name="action_open_live_tracking_page"
+                                    class="btn btn-sm btn-primary flex-grow-1"
+                                    style="font-size:10px;padding:4px;border-radius:6px;font-weight:600;"
+                                    invisible="state in ('done','visited','rejected','planned') or user_id != uid">
+                                <i class="fa fa-rss me-1"/> Live Page
+                            </button>
+                            <button type="object" name="action_open_moving_map_view"
+                                    class="btn btn-sm btn-outline-primary flex-grow-1"
+                                    style="font-size:10px;padding:4px;border-radius:6px;">
+                                <i class="fa fa-map-marker me-1"/> Map
+                            </button>
+                        </div>
+
+                    </div>
+                </t>
+            </templates>
+        </kanban>
+    </field>
+</record>
+
+    <record id="view_salesperson_tracker_form" model="ir.ui.view">
+        <field name="name">salesperson.tracker.form</field>
+        <field name="model">salesperson.tracker</field>
+        <field name="arch" type="xml">
+            <form string="Salesperson Tracker">
+                <header>
+
+                    <button name="action_set_accepted"
+                        string="Accept"
+                        type="object"
+                        class="btn-success"
+                        groups="sales_team.group_sale_manager"
+                        invisible="state != 'planned'"/>
+
+                    <button name="action_set_rejected"
+                            string="Reject"
+                            type="object"
+                            class="btn-danger"
+                            groups="sales_team.group_sale_manager"
+                            invisible="state != 'planned'"/>
+
+                    <button name="action_set_visited"
+                            string="Mark as Visited"
+                            type="object"
+                            class="btn-primary"
+                            groups="sales_team.group_sale_salesman"
+                            invisible="state != 'accepted'"/>
+
+                    <button name="action_set_done"
+                            string="Done"
+                            type="object"
+                            class="btn-success"
+                            invisible="state != 'visited'"/>
+
+                    <button name="action_set_planned"
+                            string="Reset to Planned"
+                            type="object"
+                            invisible="state not in ('accepted', 'visited')"/>
+
+                    <field name="state" widget="statusbar"
+                        statusbar_visible="planned,accepted,visited,done"/>
+                </header>
+                <sheet>
+                    <!-- <div class="oe_button_box" name="button_box">
+                        <button name="action_view_history" type="object" class="oe_stat_button" icon="fa-map-marker">
+                            <div class="o_stat_info">
+                                <field name="history_count" class="o_stat_value"/>
+                                <span class="o_stat_text">Logs</span>
+                            </div>
+                        </button>
+                        <button name="action_view_today_visit_plan" type="object" class="oe_stat_button" icon="fa-list-ul">
+                            <div class="o_stat_info">
+                                <field name="today_covered_count" class="o_stat_value"/>
+                                <span class="o_stat_text">Covered Today</span>
+                            </div>
+                        </button>
+                        <button name="action_view_checkins" type="object" class="oe_stat_button" icon="fa-check-circle">
+                            <div class="o_stat_info">
+                                <span class="o_stat_value">0</span>
+                                <span class="o_stat_text">Check-Ins</span>
+                            </div>
+                        </button>
+                        <button name="action_view_kpi" type="object" class="oe_stat_button" icon="fa-bar-chart">
+                            <div class="o_stat_info">
+                                <field name="kpi_visit_completion_rate" class="o_stat_value"/>
+                                <span class="o_stat_text">KPI %</span>
+                            </div>
+                        </button>
+                    </div> -->
+                    <div class="oe_title">
+                        <h1><field name="user_id"/></h1>
+                        <div class="text-muted">
+                            <field name="sale_team_id"/>
+                        </div>
+                    </div>
+
+
+                    <group string="Basic Informations">
+                        <group>
+                            <field name="user_id"/>
+                            <field name="visit_date"/>
+                        </group>
+                        <group>
+
+                            <field name="purpose"/>
+                            <field name="priority"/>
+                        </group>
+                
+                            <field name="partner_ids" widget="many2many_tags" string="Customers"/>
+
+                        </group>
+
+                        <group string="Location and coverage">
+                        
+                        <group>
+                            <field name="location_name" string="Location Name"/>
+                            <field name="latitude" string="Latitude"/>
+                        </group>
+        
+                        <group>
+                            <field name="radius_meters" string="Radius (meters)"/>
+                            <field name="longitude" string="Longitude"/>
+                        </group>
+
+                        </group>
+
+
+                    <group string="Check-in / Check-out">
+                        <group>
+                            <field name="checkin_time"/>
+                            <field name="checkout_time"/>
+                        </group>
+
+                        <div class="stay-big text-primary">
+                            Stay: <field name="stay_display"/>
+                        </div>
+                    </group>
+
+                    <group string="Expenses">
+                            <group>
+                                <field name="expense_transport" string="Transport Cost"/>
+                                <field name="expense_food" string="Food Cost"/>
+                                <field name="expense_other" string="Other Cost"/>
+                            </group>
+
+                            <group>
+                                <field name="total_expense" string="Total" readonly="1"/>
+                            </group>
+                    </group>
+
+                    <group string="Tracking Related informations">
+                        <field name="last_tracking_display"/>
+                        <field name="total_distance_km"/>
+                    </group>
+
+
+                    <notebook>
+                        <page string="Travel Lines">
+                            <field name="line_ids">
+                                <list editable="bottom"
+                                      decoration-success="state == 'visited'"
+                                      decoration-danger="state == 'rejected'"
+                                      decoration-info="state == 'planned'"
+                                      class="o_list_compact">
+                                    <field name="partner_id" string="Partner" width="200"/>
+                                    <field name="visit_date" string="Visit Date" width="200"/>
+                                    <field name="from_location" string="From" width="200"/>
+                                    <field name="to_location" string="To" width="200"/>
+                                    <field name="total_cost" string="Total Cost" width="200"/>
+                                    <field name="state" string="Status" width="200"/>
+                                    <field name="notes" string="Notes" optional="show" width="200"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Related Notes">
+                             <field name="note" widget="html"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_salesperson_tracker_map" model="ir.ui.view">
+        <field name="name">salesperson.tracker.map</field>
+        <field name="model">salesperson.tracker</field>
+        <field name="arch" type="xml">
+            <map string="Live Salespersons" res_partner="partner_id" hide_address="1">
+                <field name="user_id" string="Salesperson"/>
+                <field name="tracking_status_label" string="Status"/>
+                <field name="last_seen" string="Last Update"/>
+            </map>
+        </field>
+    </record>
+
+    <record id="view_salesperson_location_log_tree" model="ir.ui.view">
+        <field name="name">salesperson.location.log.tree</field>
+        <field name="model">salesperson.location.log</field>
+        <field name="arch" type="xml">
+            <list string="Location History" class="o_list_compact" export_xlsx="1">
+                <field name="tracked_at" width="200" optional="show"/>
+                <field name="tracker_id" width="200" optional="show"/>
+                <field name="user_id" width="200"/>
+                <field name="location_name" width="200"/>
+                <field name="latitude" width="200"/>
+                <field name="longitude" width="200"/>
+                <field name="accuracy" optional="show" width="200"/>
+                <field name="speed" optional="show" width="200"/>
+                <field name="heading" optional="show" width="200"/>
+                <field name="source" optional="show" width="200"/>
+                <field name="openstreetmap_url" widget="url" string="Map" width="200"/>
+            </list>
+        </field>
+    </record>
+
+
+    <record id="view_reject_reason_wizard_form" model="ir.ui.view">
+        <field name="name">reject.reason.wizard.form</field>
+        <field name="model">reject.reason.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Reject Reason">
+                <group>
+                    <field name="reason"/>
+                </group>
+                <footer>
+                    <button name="action_confirm_reject"
+                            string="Confirm Reject"
+                            type="object"
+                            class="btn-danger"/>
+                    <button string="Cancel" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_salesperson_location_log_form" model="ir.ui.view">
+        <field name="name">salesperson.location.log.form</field>
+        <field name="model">salesperson.location.log</field>
+        <field name="arch" type="xml">
+            <form string="Location Log">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="tracker_id"/>
+                            <field name="user_id"/>
+                            <field name="tracked_at"/>
+                            <field name="source"/>
+                            <field name="location_name"/>
+                        </group>
+                        <group>
+                            <field name="latitude"/>
+                            <field name="longitude"/>
+                            <field name="accuracy"/>
+                            <field name="speed"/>
+                            <field name="heading"/>
+                            <field name="openstreetmap_url" widget="url" string="OpenStreetMap"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_salesperson_tracker_dashboard" model="ir.actions.act_window">
+        <field name="name">Salesperson Tracking</field>
+        <field name="res_model">salesperson.tracker</field>
+        <field name="view_mode">kanban,list,form,map</field>
+    </record>
+
+    <record id="action_salesperson_tracker_my" model="ir.actions.act_window">
+        <field name="name">My Tracking</field>
+        <field name="res_model">salesperson.tracker</field>
+        <field name="view_mode">form,list,map</field>
+        <field name="domain">[('user_id', '=', uid)]</field>
+        <field name="context">{'default_user_id': uid}</field>
+    </record>
+
+    <record id="action_salesperson_location_history" model="ir.actions.act_window">
+        <field name="name">Location History</field>
+        <field name="res_model">salesperson.location.log</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="action_salesperson_live_page" model="ir.actions.act_url">
+        <field name="name">Live Tracking</field>
+        <field name="url">/salesperson_tracking/live</field>
+        <field name="target">self</field>
+    </record>
+
+</odoo>

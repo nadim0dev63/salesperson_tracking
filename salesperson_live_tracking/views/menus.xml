@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+<data noupdate="0">
+
+    <!-- Root app — visible to all module users -->
+    <menuitem id="menu_salesperson_tracking_root"
+              name="Salesperson Tracking"
+              sequence="10"
+              groups="salesperson_live_tracking.group_salesperson_tracking_user,salesperson_live_tracking.group_salesperson_tracking_manager"
+              web_icon="salesperson_live_tracking,static/description/icon.png"/>
+
+
+
+    <menuitem id="menu_salesperson_visit_plan_my"
+              name="Send Planned Visits"
+              parent="menu_salesperson_tracking_root"
+              action="action_salesperson_visit_plan_my"
+              sequence="2"
+              groups="salesperson_live_tracking.group_salesperson_tracking_user"/>
+
+    <menuitem id="menu_salesperson_tracking_history"
+              name="Location History"
+              parent="menu_salesperson_tracking_root"
+              action="action_salesperson_location_history"
+              sequence="3"
+              groups="salesperson_live_tracking.group_salesperson_tracking_user"/>
+              
+    <menuitem id="menu_salesperson_tracking_dashboard"
+          name="Team Dashboard"
+          parent="menu_salesperson_tracking_root"
+          action="action_salesperson_tracker_dashboard"
+          sequence="10"
+          groups="salesperson_live_tracking.group_salesperson_tracking_user,salesperson_live_tracking.group_salesperson_tracking_manager"/>
+
+    <menuitem id="menu_salesperson_dashboard"
+              name="Live Dashboard"
+              parent="menu_salesperson_tracking_root"
+              action="action_salesperson_dashboard"
+              sequence="11"
+              groups="salesperson_live_tracking.group_salesperson_tracking_manager"/>
+
+    <menuitem id="menu_salesperson_location_backup"
+              name="Location Backups"
+              parent="menu_salesperson_tracking_root"
+              action="salesperson_live_tracking.action_salesperson_location_backup"
+              sequence="12"
+              groups="salesperson_live_tracking.group_salesperson_tracking_manager"/>
+
+  </data>
+</odoo>

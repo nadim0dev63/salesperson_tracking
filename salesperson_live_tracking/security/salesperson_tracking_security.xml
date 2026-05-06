@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="salesperson_checkin_rule_own" model="ir.rule">
+        <field name="name">Salesperson Check-In: Own Records Only</field>
+        <field name="model_id" ref="model_salesperson_checkin"/>
+        <field name="groups" eval="[(4, ref('salesperson_live_tracking.group_salesperson_tracking_user'))]"/>
+        <field name="domain_force">[('user_id', '=', user.id)]</field>
+    </record>
+
+    <record id="salesperson_checkin_rule_manager_all" model="ir.rule">
+        <field name="name">Salesperson Check-In: Manager All</field>
+        <field name="model_id" ref="model_salesperson_checkin"/>
+        <field name="groups" eval="[(4, ref('salesperson_live_tracking.group_salesperson_tracking_manager'))]"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+    </record>
+
+    <record id="salesperson_kpi_rule_own" model="ir.rule">
+        <field name="name">Salesperson KPI: Own Records Only</field>
+        <field name="model_id" ref="model_salesperson_kpi"/>
+        <field name="groups" eval="[(4, ref('salesperson_live_tracking.group_salesperson_tracking_user'))]"/>
+        <field name="domain_force">[('user_id', '=', user.id)]</field>
+    </record>
+
+    <record id="salesperson_kpi_rule_manager_all" model="ir.rule">
+        <field name="name">Salesperson KPI: Manager All</field>
+        <field name="model_id" ref="model_salesperson_kpi"/>
+        <field name="groups" eval="[(4, ref('salesperson_live_tracking.group_salesperson_tracking_manager'))]"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+    </record>
+
+</odoo>
