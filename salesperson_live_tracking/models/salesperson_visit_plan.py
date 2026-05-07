@@ -272,6 +272,7 @@ class AddSpaceForSalespersonLine(models.Model):
     visit_date = fields.Date(required=True)
     from_location = fields.Char()
     to_location = fields.Char()
+    expected_km = fields.Float(string="Expected Km")
     total_cost = fields.Float()
     notes = fields.Text()
     status = fields.Selection(related='plan_id.state', store=True)

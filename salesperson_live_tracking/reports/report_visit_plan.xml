@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================
+         Report Action
+    ============================================================ -->
+    <record id="action_report_visit_plan" model="ir.actions.report">
+        <field name="name">Visit Plan Report</field>
+        <field name="model">salesperson.visit.plan</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">salesperson_live_tracking.report_visit_plan_document</field>
+        <field name="report_file">salesperson_live_tracking.report_visit_plan_document</field>
+        <field name="binding_model_id" ref="model_salesperson_visit_plan"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <!-- ============================================================
+         QWeb Template
+    ============================================================ -->
+    <template id="report_visit_plan_document">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-call="web.external_layout">
+                    <div class="page">
+
+                        <!-- ── Header ── -->
+                        <div style="border-bottom:2px solid #2d6a9f;padding-bottom:10px;margin-bottom:20px;">
+                            <h2 style="color:#2d6a9f;margin:0;">Visit Plan Report</h2>
+                            <p style="margin:4px 0 0;color:#555;font-size:13px;">
+                                Reference: <strong><t t-esc="o.name"/></strong>
+                                &amp;nbsp;|&amp;nbsp;
+                                Date: <strong><t t-esc="o.visit_date"/></strong>
+                            </p>
+                        </div>
+
+                        <!-- ── Basic Information ── -->
+                        <table class="table table-sm" style="margin-bottom:16px;">
+                            <thead>
+                                <tr style="background:#f0f4f8;">
+                                    <th colspan="4" style="color:#2d6a9f;padding:6px 10px;">Basic Information</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="width:20%;font-weight:600;color:#555;">Salesperson</td>
+                                    <td><t t-esc="o.user_id.name"/></td>
+                                    <td style="width:20%;font-weight:600;color:#555;">Purpose</td>
+                                    <td><t t-esc="dict(o._fields['purpose'].selection).get(o.purpose, '')"/></td>
+                                </tr>
+                                <tr>
+                                    <td style="font-weight:600;color:#555;">Visit Date</td>
+                                    <td><t t-esc="o.visit_date"/></td>
+                                    <td style="font-weight:600;color:#555;">Priority</td>
+                                    <td><t t-esc="dict(o._fields['priority'].selection).get(o.priority, 'Normal')"/></td>
+                                </tr>
+                                <tr>
+                                    <td style="font-weight:600;color:#555;">Status</td>
+                                    <td><t t-esc="dict(o._fields['state'].selection).get(o.state, '')"/></td>
+                                    <td style="font-weight:600;color:#555;">Sales Team</td>
+                                    <td><t t-esc="o.sale_team_id.name or '—'"/></td>
+                                </tr>
+                                <tr>
+                                    <td style="font-weight:600;color:#555;">Coverage Status</td>
+                                    <td>
+                                        <t t-if="o.is_covered">
+                                            <span style="color:#1a7a4a;font-weight:600;">Covered</span>
+                                        </t>
+                                        <t t-else="">
+                                            <span style="color:#c0392b;font-weight:600;">Not Covered</span>
+                                        </t>
+                                    </td>
+                                    <td/><td/>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- ── Customers / Partners ── -->
+                        <t t-if="o.partner_ids">
+                            <table class="table table-sm" style="margin-bottom:16px;">
+                                <thead>
+                                    <tr style="background:#f0f4f8;">
+                                        <th colspan="3" style="color:#2d6a9f;padding:6px 10px;">Customers</th>
+                                    </tr>
+                                    <tr style="background:#fafafa;font-size:12px;">
+                                        <th style="color:#555;">Name</th>
+                                        <th style="color:#555;">Email</th>
+                                        <th style="color:#555;">Phone</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <t t-foreach="o.partner_ids" t-as="p">
+                                        <tr>
+                                            <td><t t-esc="p.name"/></td>
+                                            <td><t t-esc="p.email or '—'"/></td>
+                                            <td><t t-esc="p.phone or '—'"/></td>
+                                        </tr>
+                                    </t>
+                                </tbody>
+                            </table>
+                        </t>
+
+                        <!-- ── Location &amp; Coverage ── -->
+                        <table class="table table-sm" style="margin-bottom:16px;">
+                            <thead>
+                                <tr style="background:#f0f4f8;">
+                                    <th colspan="4" style="color:#2d6a9f;padding:6px 10px;">Location &amp; Coverage</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="width:20%;font-weight:600;color:#555;">Location Name</td>
+                                    <td><t t-esc="o.location_name or '—'"/></td>
+                                    <td style="width:20%;font-weight:600;color:#555;">Radius (m)</td>
+                                    <td><t t-esc="o.radius_meters"/></td>
+                                </tr>
+                                <tr>
+                                    <td style="font-weight:600;color:#555;">Latitude</td>
+                                    <td><t t-esc="o.latitude"/></td>
+                                    <td style="font-weight:600;color:#555;">Longitude</td>
+                                    <td><t t-esc="o.longitude"/></td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- ── Check-in / Check-out ── -->
+                        <table class="table table-sm" style="margin-bottom:16px;">
+                            <thead>
+                                <tr style="background:#f0f4f8;">
+                                    <th colspan="4" style="color:#2d6a9f;padding:6px 10px;">Check-In / Check-Out</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="width:20%;font-weight:600;color:#555;">Check-In</td>
+                                    <td><t t-esc="o.checkin_time or '—'"/></td>
+                                    <td style="width:20%;font-weight:600;color:#555;">Check-Out</td>
+                                    <td><t t-esc="o.checkout_time or '—'"/></td>
+                                </tr>
+                                <tr>
+                                    <td style="font-weight:600;color:#555;">Stay (min)</td>
+                                    <td><t t-esc="'%.0f' % o.stay_minutes"/></td>
+                                    <td/><td/>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- ── Expenses ── -->
+                        <table class="table table-sm" style="margin-bottom:16px;">
+                            <thead>
+                                <tr style="background:#f0f4f8;">
+                                    <th colspan="4" style="color:#2d6a9f;padding:6px 10px;">Expenses</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="width:20%;font-weight:600;color:#555;">Transport</td>
+                                    <td><t t-esc="'%.2f' % o.expense_transport"/></td>
+                                    <td style="width:20%;font-weight:600;color:#555;">Food</td>
+                                    <td><t t-esc="'%.2f' % o.expense_food"/></td>
+                                </tr>
+                                <tr>
+                                    <td style="font-weight:600;color:#555;">Other</td>
+                                    <td><t t-esc="'%.2f' % o.expense_other"/></td>
+                                    <td style="font-weight:600;color:#555;">Total</td>
+                                    <td><strong><t t-esc="'%.2f' % o.total_expense"/></strong></td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- ── Travel Lines ── -->
+                        <t t-if="o.space_line_ids">
+                            <table class="table table-bordered table-sm" style="margin-bottom:16px;font-size:12px;">
+                                <thead>
+                                    <tr style="background:#2d6a9f;color:#fff;">
+                                        <th>Visit Date</th>
+                                        <th>Customer</th>
+                                        <th>From</th>
+                                        <th>To</th>
+                                        <th style="text-align:right;">Exp. Km</th>
+                                        <th style="text-align:right;">Cost</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <t t-foreach="o.space_line_ids" t-as="line">
+                                        <tr>
+                                            <td><t t-esc="line.visit_date or '—'"/></td>
+                                            <td><t t-esc="line.partner_id.name or '—'"/></td>
+                                            <td><t t-esc="line.from_location or '—'"/></td>
+                                            <td><t t-esc="line.to_location or '—'"/></td>
+                                            <td style="text-align:right;"><t t-esc="'%.1f' % line.expected_km"/></td>
+                                            <td style="text-align:right;"><t t-esc="'%.2f' % line.total_cost"/></td>
+                                        </tr>
+                                    </t>
+                                </tbody>
+                                <tfoot>
+                                    <tr style="background:#f0f4f8;font-weight:600;">
+                                        <td colspan="5" style="text-align:right;color:#555;">Grand Total</td>
+                                        <td style="text-align:right;">
+                                            <t t-esc="'%.2f' % sum(o.space_line_ids.mapped('total_cost'))"/>
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </t>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+
+</odoo>

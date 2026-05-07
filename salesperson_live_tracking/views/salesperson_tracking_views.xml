@@ -357,6 +357,7 @@
                                     <field name="visit_date" string="Visit Date" width="200"/>
                                     <field name="from_location" string="From" width="200"/>
                                     <field name="to_location" string="To" width="200"/>
+                                    <field name="expected_km" />
                                     <field name="total_cost" string="Total Cost" width="200"/>
                                     <field name="state" string="Status" width="200"/>
                                     <field name="notes" string="Notes" optional="show" width="200"/>

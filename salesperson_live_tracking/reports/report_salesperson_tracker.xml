@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================
+         Report Action — Salesperson Tracker
+    ============================================================ -->
+    <record id="action_report_salesperson_tracker" model="ir.actions.report">
+        <field name="name">Salesperson Tracking Report</field>
+        <field name="model">salesperson.tracker</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">salesperson_live_tracking.report_salesperson_tracker_document</field>
+        <field name="report_file">salesperson_live_tracking.report_salesperson_tracker_document</field>
+        <field name="binding_model_id" ref="model_salesperson_tracker"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <!-- ============================================================
+         QWeb Template
+    ============================================================ -->
+    <template id="report_salesperson_tracker_document">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-call="web.external_layout">
+                    <div class="page">
+
+                        <!-- Header -->
+                        <div style="border-bottom:2px solid #2d6a9f;padding-bottom:10px;margin-bottom:20px;">
+                            <h2 style="color:#2d6a9f;margin:0;">Salesperson Tracking Report</h2>
+                            <p style="margin:4px 0 0;color:#555;font-size:13px;">
+                                Salesperson: <strong><t t-esc="o.user_id.name"/></strong>
+                                &amp;nbsp;|&amp;nbsp;
+                                Date: <strong><t t-esc="o.visit_date"/></strong>
+                            </p>
+                        </div>
+
+                        <!-- Basic Information -->
+                        <table class="table table-sm" style="margin-bottom:16px;">
+                            <thead>
+                                <tr style="background:#f0f4f8;">
+                                    <th colspan="4" style="color:#2d6a9f;padding:6px 10px;">Basic Information</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="width:20%;font-weight:600;color:#555;">Salesperson</td>
+                                    <td><t t-esc="o.user_id.name"/></td>
+                                    <td style="width:20%;font-weight:600;color:#555;">Sales Team</td>
+                                    <td><t t-esc="o.sale_team_id.name or '—'"/></td>
+                                </tr>
+                                <tr>
+                                    <td style="font-weight:600;color:#555;">Visit Date</td>
+                                    <td><t t-esc="o.visit_date"/></td>
+                                    <td style="font-weight:600;color:#555;">Priority</td>
+                                    <td><t t-esc="dict(o._fields['priority'].selection).get(o.priority, 'Normal')"/></td>
+                                </tr>
+                                <tr>
+                                    <td style="font-weight:600;color:#555;">Status</td>
+                                    <td><t t-esc="dict(o._fields['state'].selection).get(o.state, '')"/></td>
+                                    <td style="font-weight:600;color:#555;">Purpose</td>
+                                    <td><t t-esc="dict(o._fields['purpose'].selection).get(o.purpose, '') or '—'"/></td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- Tracking Status -->
+                        <table class="table table-sm" style="margin-bottom:16px;">
+                            <thead>
+                                <tr style="background:#f0f4f8;">
+                                    <th colspan="4" style="color:#2d6a9f;padding:6px 10px;">Tracking Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="width:20%;font-weight:600;color:#555;">Tracking Active</td>
+                                    <td><t t-esc="'Yes' if o.is_tracking else 'No'"/></td>
+                                    <td style="width:20%;font-weight:600;color:#555;">Last Update</td>
+                                    <td><t t-esc="o.last_seen or '—'"/></td>
+                                </tr>
+                                <tr>
+                                    <td style="font-weight:600;color:#555;">Tracking Status</td>
+                                    <td><t t-esc="dict(o._fields['tracking_status'].selection).get(o.tracking_status, '') or '—'"/></td>
+                                    <td style="font-weight:600;color:#555;">Total Distance (KM)</td>
+                                    <td><t t-esc="'%.2f' % o.total_distance_km"/></td>
+                                </tr>
+                                <tr>
+                                    <td style="font-weight:600;color:#555;">Speed (m/s)</td>
+                                    <td><t t-esc="'%.2f' % o.last_speed"/></td>
+                                    <td style="font-weight:600;color:#555;">Accuracy (m)</td>
+                                    <td><t t-esc="'%.2f' % o.last_accuracy"/></td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- Location -->
+                        <table class="table table-sm" style="margin-bottom:16px;">
+                            <thead>
+                                <tr style="background:#f0f4f8;">
+                                    <th colspan="4" style="color:#2d6a9f;padding:6px 10px;">Location</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="width:20%;font-weight:600;color:#555;">Current Location</td>
+                                    <td><t t-esc="o.location_name or '—'"/></td>
+                                    <td style="width:20%;font-weight:600;color:#555;">Radius (m)</td>
+                                    <td><t t-esc="o.radius_meters"/></td>
+                                </tr>
+                                <tr>
+                                    <td style="font-weight:600;color:#555;">Latitude</td>
+                                    <td><t t-esc="o.latitude"/></td>
+                                    <td style="font-weight:600;color:#555;">Longitude</td>
+                                    <td><t t-esc="o.longitude"/></td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- Check-in / Check-out -->
+                        <table class="table table-sm" style="margin-bottom:16px;">
+                            <thead>
+                                <tr style="background:#f0f4f8;">
+                                    <th colspan="4" style="color:#2d6a9f;padding:6px 10px;">Check-In / Check-Out</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="width:20%;font-weight:600;color:#555;">Check-In</td>
+                                    <td><t t-esc="o.checkin_time or '—'"/></td>
+                                    <td style="width:20%;font-weight:600;color:#555;">Check-Out</td>
+                                    <td><t t-esc="o.checkout_time or '—'"/></td>
+                                </tr>
+                                <tr>
+                                    <td style="font-weight:600;color:#555;">Stay (min)</td>
+                                    <td><t t-esc="'%.0f' % o.stay_minutes"/></td>
+                                    <td style="font-weight:600;color:#555;">Tracking Started At</td>
+                                    <td><t t-esc="o.last_tracking_start or '—'"/></td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- Expenses -->
+                        <table class="table table-sm" style="margin-bottom:16px;">
+                            <thead>
+                                <tr style="background:#f0f4f8;">
+                                    <th colspan="4" style="color:#2d6a9f;padding:6px 10px;">Expenses</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="width:20%;font-weight:600;color:#555;">Transport</td>
+                                    <td><t t-esc="'%.2f' % o.expense_transport"/></td>
+                                    <td style="width:20%;font-weight:600;color:#555;">Food</td>
+                                    <td><t t-esc="'%.2f' % o.expense_food"/></td>
+                                </tr>
+                                <tr>
+                                    <td style="font-weight:600;color:#555;">Other</td>
+                                    <td><t t-esc="'%.2f' % o.expense_other"/></td>
+                                    <td style="font-weight:600;color:#555;">Total</td>
+                                    <td><strong><t t-esc="'%.2f' % o.total_expense"/></strong></td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- Customers -->
+                        <t t-if="o.partner_ids">
+                            <table class="table table-bordered table-sm" style="margin-bottom:16px;font-size:12px;">
+                                <thead>
+                                    <tr style="background:#2d6a9f;color:#fff;">
+                                        <th>Customer</th>
+                                        <th>Email</th>
+                                        <th>Phone</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <t t-foreach="o.partner_ids" t-as="p">
+                                        <tr>
+                                            <td><t t-esc="p.name"/></td>
+                                            <td><t t-esc="p.email or '—'"/></td>
+                                            <td><t t-esc="p.phone or '—'"/></td>
+                                        </tr>
+                                    </t>
+                                </tbody>
+                            </table>
+                        </t>
+
+                        <!-- Footer note -->
+                        <p style="font-size:11px;color:#aaa;margin-top:30px;border-top:1px solid #eee;padding-top:8px;">
+                            Generated from Salesperson Live Tracking Module
+                        </p>
+
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+
+</odoo>

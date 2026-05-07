@@ -286,6 +286,7 @@
                                     <field name="partner_id"/>
                                     <field name="from_location"/>
                                     <field name="to_location"/>
+                                    <field name="expected_km"/>
                                     <field name="total_cost"/>
                                 </list>
                             </field>

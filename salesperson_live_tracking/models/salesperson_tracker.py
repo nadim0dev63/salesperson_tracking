@@ -557,6 +557,7 @@ class SalesPersonSpaceLine(models.Model):
     visit_date    = fields.Date(string="Visit Date", required=True, tracking=True)
     from_location = fields.Char(string="From")
     to_location   = fields.Char(string="To")
+    expected_km = fields.Float(string="Expected Km")
     total_cost    = fields.Char(string="Total Cost")
     notes         = fields.Text(string="Notes")
     state         = fields.Selection(related="plan_id.state", string="Status", store=True)
