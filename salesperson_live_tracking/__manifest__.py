@@ -15,6 +15,8 @@
         "security/salesperson_tracking_security.xml",
         "security/ir.model.access.csv",
         "security/ir.rule.xml",
+        "reports/report_visit_plan.xml",
+        "reports/report_salesperson_tracker.xml",
         "views/salesperson_tracking_views.xml",
         "views/salesperson_visit_plan_views.xml",
         "views/salesperson_checkin_views.xml",
