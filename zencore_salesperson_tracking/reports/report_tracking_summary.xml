@@ -15,49 +15,389 @@
             <t t-foreach="docs" t-as="tracker">
                 <t t-call="web.external_layout">
                     <div class="page">
-                        <h2>Tracking Summary Report</h2>
-                        <p><strong>Salesman:</strong> <t t-esc="tracker.user_id.name"/></p>
-                        <p><strong>Visit Date:</strong> <t t-esc="tracker.visit_date"/></p>
-                        <p><strong>Status:</strong> <t t-esc="tracker.state"/></p>
 
-                        <h3>Visit Statistics</h3>
-                        <table class="table">
-                            <tr><th>Total Visits</th><td><t t-esc="tracker.total_visits"/></td></tr>
-                            <tr><th>Visited</th><td><t t-esc="tracker.total_visited"/></td></tr>
-                            <tr><th>Skipped</th><td><t t-esc="tracker.skipped_visits"/></td></tr>
-                        </table>
+                        <style>
+                            /* ── Reset ── */
+                            * { box-sizing: border-box; margin: 0; padding: 0; }
 
-                        <h3>Timing</h3>
-                        <table class="table">
-                            <tr><th>First Check-In</th><td><t t-esc="tracker.checkin_time"/></td></tr>
-                            <tr><th>Last Check-Out</th><td><t t-esc="tracker.checkout_time"/></td></tr>
-                            <tr><th>Duration (Hours)</th><td><t t-esc="tracker.duration_hours"/></td></tr>
-                            <tr><th>Total Distance (KM)</th><td><t t-esc="tracker.total_distance_km"/></td></tr>
-                        </table>
+                            /* ── Report Header Banner ── */
+                            .rpt-header {
+                                background: linear-gradient(135deg, #1e3a5f 0%, #2e6da4 100%);
+                                border-radius: 10px;
+                                padding: 24px 28px;
+                                margin-bottom: 22px;
+                                color: #fff;
+                            }
+                            .rpt-header-top {
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: flex-start;
+                            }
+                            .rpt-title {
+                                font-size: 22px;
+                                font-weight: 700;
+                                letter-spacing: 0.5px;
+                                margin-bottom: 4px;
+                            }
+                            .rpt-subtitle {
+                                font-size: 11px;
+                                opacity: 0.75;
+                                text-transform: uppercase;
+                                letter-spacing: 1.2px;
+                            }
+                            .rpt-badge {
+                                background: rgba(255,255,255,0.18);
+                                border: 1px solid rgba(255,255,255,0.35);
+                                border-radius: 20px;
+                                padding: 5px 14px;
+                                font-size: 11px;
+                                font-weight: 600;
+                                text-transform: uppercase;
+                                letter-spacing: 0.8px;
+                            }
+                            .rpt-meta-row {
+                                display: flex;
+                                gap: 28px;
+                                margin-top: 16px;
+                                border-top: 1px solid rgba(255,255,255,0.2);
+                                padding-top: 14px;
+                            }
+                            .rpt-meta-item label {
+                                display: block;
+                                font-size: 9px;
+                                text-transform: uppercase;
+                                letter-spacing: 1px;
+                                opacity: 0.65;
+                                margin-bottom: 2px;
+                            }
+                            .rpt-meta-item span {
+                                font-size: 13px;
+                                font-weight: 600;
+                            }
 
-                        <h3>Expenses</h3>
-                        <table class="table">
-                            <tr><th></th><th>Claimed</th><th>Actual</th></tr>
-                            <tr><td>Transport</td><td><t t-esc="tracker.transport_cost"/></td><td><t t-esc="tracker.actual_transport_cost"/></td></tr>
-                            <tr><td>Food</td><td><t t-esc="tracker.food_cost"/></td><td><t t-esc="tracker.actual_food_cost"/></td></tr>
-                            <tr><td>Other</td><td><t t-esc="tracker.other_cost"/></td><td><t t-esc="tracker.actual_other_cost"/></td></tr>
-                            <tr><td>Total</td><td><t t-esc="tracker.total_cost"/></td><td><t t-esc="tracker.actual_total_cost"/></td></tr>
-                        </table>
+                            /* ── KPI Cards Row ── */
+                            .kpi-row {
+                                display: flex;
+                                gap: 12px;
+                                margin-bottom: 22px;
+                            }
+                            .kpi-card {
+                                flex: 1;
+                                border-radius: 8px;
+                                padding: 14px 16px;
+                                text-align: center;
+                                border: 1px solid #e2e8f0;
+                            }
+                            .kpi-card.green  { background: #f0fdf4; border-color: #86efac; }
+                            .kpi-card.blue   { background: #eff6ff; border-color: #93c5fd; }
+                            .kpi-card.amber  { background: #fffbeb; border-color: #fcd34d; }
+                            .kpi-card.slate  { background: #f8fafc; border-color: #cbd5e1; }
+                            .kpi-card.purple { background: #faf5ff; border-color: #c4b5fd; }
+                            .kpi-num {
+                                font-size: 26px;
+                                font-weight: 800;
+                                line-height: 1;
+                                margin-bottom: 4px;
+                            }
+                            .kpi-card.green  .kpi-num { color: #16a34a; }
+                            .kpi-card.blue   .kpi-num { color: #2563eb; }
+                            .kpi-card.amber  .kpi-num { color: #d97706; }
+                            .kpi-card.slate  .kpi-num { color: #475569; }
+                            .kpi-card.purple .kpi-num { color: #7c3aed; }
+                            .kpi-label {
+                                font-size: 9.5px;
+                                font-weight: 600;
+                                text-transform: uppercase;
+                                letter-spacing: 0.8px;
+                                color: #64748b;
+                            }
 
-                        <h3>Visited Customers</h3>
-                        <table class="table">
-                            <thead><tr><th>Customer</th><th>In</th><th>Exit</th><th>Time Spent</th></tr></thead>
+                            /* ── Section Headers ── */
+                            .section-header {
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                                margin: 20px 0 10px 0;
+                            }
+                            .section-bar {
+                                width: 4px;
+                                height: 18px;
+                                border-radius: 2px;
+                                background: linear-gradient(180deg, #2e6da4, #1e3a5f);
+                            }
+                            .section-title {
+                                font-size: 13px;
+                                font-weight: 700;
+                                color: #1e3a5f;
+                                text-transform: uppercase;
+                                letter-spacing: 0.6px;
+                            }
+                            .section-line {
+                                flex: 1;
+                                height: 1px;
+                                background: #e2e8f0;
+                            }
+
+                            /* ── Tables ── */
+                            .rpt-table {
+                                width: 100%;
+                                border-collapse: collapse;
+                                font-size: 11.5px;
+                                border-radius: 8px;
+                                overflow: hidden;
+                                border: 1px solid #e2e8f0;
+                                margin-bottom: 6px;
+                            }
+                            .rpt-table thead tr {
+                                background: #1e3a5f;
+                                color: #fff;
+                            }
+                            .rpt-table thead th {
+                                padding: 9px 12px;
+                                font-size: 10px;
+                                font-weight: 600;
+                                text-transform: uppercase;
+                                letter-spacing: 0.7px;
+                                text-align: left;
+                            }
+                            .rpt-table thead th.right { text-align: right; }
+                            .rpt-table tbody tr:nth-child(even) { background: #f8fafc; }
+                            .rpt-table tbody tr:nth-child(odd)  { background: #ffffff; }
+                            .rpt-table tbody tr:last-child td { border-bottom: none; }
+                            .rpt-table td {
+                                padding: 8px 12px;
+                                border-bottom: 1px solid #f1f5f9;
+                                color: #334155;
+                                vertical-align: middle;
+                            }
+                            .rpt-table td.right { text-align: right; font-variant-numeric: tabular-nums; }
+                            .rpt-table td.label { font-weight: 600; color: #1e3a5f; }
+                            .rpt-table tfoot tr {
+                                background: #f1f5f9;
+                                border-top: 2px solid #cbd5e1;
+                            }
+                            .rpt-table tfoot td {
+                                padding: 9px 12px;
+                                font-weight: 700;
+                                color: #1e3a5f;
+                                border-bottom: none;
+                            }
+
+                            /* ── Two-column layout for Timing + Expenses ── */
+                            .two-col { display: flex; gap: 16px; }
+                            .two-col .col { flex: 1; }
+
+                            /* ── Inline stat pill ── */
+                            .pill {
+                                display: inline-block;
+                                background: #eff6ff;
+                                color: #1d4ed8;
+                                border-radius: 4px;
+                                padding: 1px 7px;
+                                font-size: 10px;
+                                font-weight: 700;
+                            }
+                            .pill.green { background: #f0fdf4; color: #15803d; }
+                            .pill.amber { background: #fffbeb; color: #b45309; }
+
+                            /* ── Footer note ── */
+                            .rpt-footer {
+                                margin-top: 24px;
+                                border-top: 1px solid #e2e8f0;
+                                padding-top: 10px;
+                                font-size: 9px;
+                                color: #94a3b8;
+                                text-align: center;
+                            }
+                        </style>
+
+                        <!-- ══ HEADER BANNER ══ -->
+                        <div class="rpt-header">
+                            <div class="rpt-header-top">
+                                <div>
+                                    <div class="rpt-title">Tracking Summary Report</div>
+                                    <div class="rpt-subtitle">ZenCore Salesperson Tracking</div>
+                                </div>
+                                <div class="rpt-badge">
+                                    <t t-esc="tracker.state.replace('_',' ').title()"/>
+                                </div>
+                            </div>
+                            <div class="rpt-meta-row">
+                                <div class="rpt-meta-item">
+                                    <label>Salesperson</label>
+                                    <span><t t-esc="tracker.user_id.name"/></span>
+                                </div>
+                                <div class="rpt-meta-item">
+                                    <label>Visit Date</label>
+                                    <span><t t-esc="tracker.visit_date"/></span>
+                                </div>
+                                <div class="rpt-meta-item">
+                                    <label>Duration</label>
+                                    <span><t t-esc="tracker.duration_hours"/> hrs</span>
+                                </div>
+                                <div class="rpt-meta-item">
+                                    <label>Distance</label>
+                                    <span><t t-esc="tracker.total_distance_km"/> km</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ══ KPI CARDS ══ -->
+                        <div class="kpi-row">
+                            <div class="kpi-card blue">
+                                <div class="kpi-num"><t t-esc="tracker.total_visits"/></div>
+                                <div class="kpi-label">Planned</div>
+                            </div>
+                            <div class="kpi-card green">
+                                <div class="kpi-num"><t t-esc="tracker.total_visited"/></div>
+                                <div class="kpi-label">Visited</div>
+                            </div>
+                            <div class="kpi-card amber">
+                                <div class="kpi-num"><t t-esc="tracker.skipped_visits"/></div>
+                                <div class="kpi-label">Skipped</div>
+                            </div>
+                            <div class="kpi-card purple">
+                                <div class="kpi-num">
+                                    <t t-if="tracker.total_visits">
+                                        <t t-esc="int(tracker.total_visited * 100 / tracker.total_visits)"/>%
+                                    </t>
+                                    <t t-else="">—</t>
+                                </div>
+                                <div class="kpi-label">Coverage</div>
+                            </div>
+                            <div class="kpi-card slate">
+                                <div class="kpi-num"><t t-esc="tracker.total_distance_km"/></div>
+                                <div class="kpi-label">KM Today</div>
+                            </div>
+                        </div>
+
+                        <!-- ══ TIMING + EXPENSES (side by side) ══ -->
+                        <div class="two-col">
+
+                            <!-- Timing -->
+                            <div class="col">
+                                <div class="section-header">
+                                    <div class="section-bar"/>
+                                    <div class="section-title">Timing</div>
+                                    <div class="section-line"/>
+                                </div>
+                                <table class="rpt-table">
+                                    <tbody>
+                                        <tr>
+                                            <td class="label">First Check-In</td>
+                                            <td><t t-esc="tracker.checkin_time"/></td>
+                                        </tr>
+                                        <tr>
+                                            <td class="label">Last Check-Out</td>
+                                            <td><t t-esc="tracker.checkout_time"/></td>
+                                        </tr>
+                                        <tr>
+                                            <td class="label">Duration</td>
+                                            <td><t t-esc="tracker.duration_hours"/> hours</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="label">Distance</td>
+                                            <td><t t-esc="tracker.total_distance_km"/> km</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- Expenses -->
+                            <div class="col">
+                                <div class="section-header">
+                                    <div class="section-bar"/>
+                                    <div class="section-title">Expenses</div>
+                                    <div class="section-line"/>
+                                </div>
+                                <table class="rpt-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Category</th>
+                                            <th class="right">Claimed</th>
+                                            <th class="right">Actual</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td class="label">Transport</td>
+                                            <td class="right"><t t-esc="tracker.transport_cost"/></td>
+                                            <td class="right"><t t-esc="tracker.actual_transport_cost"/></td>
+                                        </tr>
+                                        <tr>
+                                            <td class="label">Food</td>
+                                            <td class="right"><t t-esc="tracker.food_cost"/></td>
+                                            <td class="right"><t t-esc="tracker.actual_food_cost"/></td>
+                                        </tr>
+                                        <tr>
+                                            <td class="label">Other</td>
+                                            <td class="right"><t t-esc="tracker.other_cost"/></td>
+                                            <td class="right"><t t-esc="tracker.actual_other_cost"/></td>
+                                        </tr>
+                                    </tbody>
+                                    <tfoot>
+                                        <tr>
+                                            <td>Total</td>
+                                            <td class="right"><t t-esc="tracker.total_cost"/></td>
+                                            <td class="right"><t t-esc="tracker.actual_total_cost"/></td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+
+                        </div>
+
+                        <!-- ══ VISITED CUSTOMERS ══ -->
+                        <div class="section-header">
+                            <div class="section-bar"/>
+                            <div class="section-title">Visited Customers</div>
+                            <div class="section-line"/>
+                        </div>
+
+                        <table class="rpt-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Customer</th>
+                                    <th>Check-In</th>
+                                    <th>Check-Out</th>
+                                    <th class="right">Time Spent</th>
+                                </tr>
+                            </thead>
                             <tbody>
                                 <t t-foreach="tracker.visited_line_ids" t-as="visited">
                                     <tr>
-                                        <td><t t-esc="visited.partner_id.name"/></td>
+                                        <td style="color:#94a3b8; width:28px;">
+                                            <t t-esc="visited_index + 1"/>
+                                        </td>
+                                        <td style="font-weight:600;">
+                                            <t t-esc="visited.partner_id.name"/>
+                                        </td>
                                         <td><t t-esc="visited.checkin_time"/></td>
                                         <td><t t-esc="visited.checkout_time"/></td>
-                                        <td><t t-esc="visited.time_spent_minutes"/> min</td>
+                                        <td class="right">
+                                            <span class="pill green">
+                                                <t t-esc="visited.time_spent_minutes"/> min
+                                            </span>
+                                        </td>
+                                    </tr>
+                                </t>
+                                <t t-if="not tracker.visited_line_ids">
+                                    <tr>
+                                        <td colspan="5" style="text-align:center; color:#94a3b8; padding:20px;">
+                                            No visits recorded yet.
+                                        </td>
                                     </tr>
                                 </t>
                             </tbody>
                         </table>
+
+                        <!-- ══ FOOTER ══ -->
+                        <div class="rpt-footer">
+                            Generated by ZenCore Salesperson Tracking ·
+                            <t t-esc="tracker.user_id.company_id.name"/>
+                        </div>
+
                     </div>
                 </t>
             </t>

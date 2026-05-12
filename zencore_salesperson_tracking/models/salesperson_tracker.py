@@ -151,29 +151,28 @@ class SalespersonTracker(models.Model):
     def _compute_tracking_status(self):
         now = fields.Datetime.now()
         for tracker in self:
-            if tracker.last_seen:
-                if tracker.is_tracking and tracker.last_seen >= now - timedelta(minutes=2):
-                    status = "live"
-                elif tracker.last_seen >= now - timedelta(minutes=30):
-                    status = "idle"
-                else:
-                    status = "offline"
-            else:
+            if not tracker.is_tracking:
+                # Explicitly stopped → always Offline, never Idle
                 status = "offline"
+            elif tracker.last_seen:
+                # is_tracking=True: live if GPS update within 5 min, idle if stalled
+                if tracker.last_seen >= now - timedelta(minutes=5):
+                    status = "live"
+                else:
+                    status = "idle"
+            else:
+                # is_tracking=True but no GPS fix yet
+                status = "idle"
             tracker.tracking_status = status
             tracker.tracking_status_label = dict(self._fields["tracking_status"].selection).get(status)
 
     def _search_tracking_status(self, operator, value):
         now = fields.Datetime.now()
-        live_cutoff = fields.Datetime.to_string(now - timedelta(minutes=2))
-        idle_cutoff = fields.Datetime.to_string(now - timedelta(minutes=30))
+        live_cutoff = fields.Datetime.to_string(now - timedelta(minutes=5))
         mapping = {
             "live": [("is_tracking", "=", True), ("last_seen", ">=", live_cutoff)],
-            "idle": [
-                "&", ("last_seen", ">=", idle_cutoff),
-                "|", ("is_tracking", "=", False), ("last_seen", "<", live_cutoff),
-            ],
-            "offline": ["|", ("last_seen", "=", False), ("last_seen", "<", idle_cutoff)],
+            "idle": ["&", ("is_tracking", "=", True), ("last_seen", "<", live_cutoff)],
+            "offline": [("is_tracking", "=", False)],
         }
         if operator != "=" or value not in mapping:
             return []
@@ -186,8 +185,18 @@ class SalespersonTracker(models.Model):
         res.partner.partner_latitude / partner_longitude.  Those fields belong
         to *customer* partners and writing the salesperson's GPS position there
         corrupts the customer pins shown on the moving map.
+
+        Heartbeat pings (accuracy=0, same lat/lng as last) only refresh last_seen
+        and do NOT create a new location log entry, keeping the log clean.
         """
         self.ensure_one()
+        # Detect heartbeat: accuracy=0 and position hasn't changed
+        is_heartbeat = (
+            accuracy == 0
+            and self.last_latitude is not None
+            and abs(float(self.last_latitude) - float(latitude)) < 0.000001
+            and abs(float(self.last_longitude) - float(longitude)) < 0.000001
+        )
         _logger.debug(
             "update_live_location: tracker=%s user=%s lat=%.6f lng=%.6f accuracy=%s source=%s retry=%s",
             self.id, self.user_id.name, latitude, longitude, accuracy, source, retry_count,
@@ -198,12 +207,18 @@ class SalespersonTracker(models.Model):
             # self.refresh() does not exist in Odoo 17+; use invalidate_recordset().
             self.invalidate_recordset()
 
+            now = fields.Datetime.now()
+
+            # Heartbeat ping: just refresh last_seen, skip geocode + log creation
+            if is_heartbeat:
+                self.write({"is_tracking": True, "last_seen": now})
+                _logger.debug("update_live_location: heartbeat refresh only for tracker=%s", self.id)
+                return
+
             # Resolve location name (may make an HTTP call; do it before the write
             # so we don't hold a long-running transaction open unnecessarily)
             location_name = self._reverse_geocode(latitude, longitude) or self.location_name
             _logger.debug("update_live_location: resolved location_name=%r", location_name)
-
-            now = fields.Datetime.now()
 
             # 1. Update tracker fields
             self.write({

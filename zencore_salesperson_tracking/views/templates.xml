@@ -598,7 +598,7 @@
                             statusText.textContent = message;
                             msgDiv.className = 'status-message ' + type;
                             if (statusDot) {
-                                statusDot.className = 'status-dot ' + (state.tracking ? 'live' : 'offline');
+                                statusDot.className = 'status-dot ' + (state.tracking ? 'live' : 'offline');  // offline when stopped
                             }
                         };
 
@@ -725,16 +725,16 @@
                             const wasTracking = state.tracking;
                             state.tracking = serverIsTracking;
 
-                            if (serverIsTracking && !wasTracking) {
-                                // Server says tracking is ON — sync this tab
-                                log('applyServerState: sync ON (firstLoad=%s)', firstLoad);
+                            if (serverIsTracking && !wasTracking && !firstLoad) {
+                                // Server flipped ON while page was open (another tab started) — sync UI
+                                log('applyServerState: sync ON');
                                 setStartBtn(true);
                                 setStopBtn(false);
                                 if (!state.timerIntervalId) {
                                     state.trackingStart = state.trackingStart || Date.now();
                                     state.timerIntervalId = setInterval(tickTimer, 1000);
                                 }
-                                if (isOwner) startWatchingPosition();
+                                // Do NOT start GPS here — only the tab that pressed Start sends location.
                                 updateStatusMessage('Tracking Active — Location updates every 2 seconds', 'info');
 
                             } else if (!serverIsTracking && wasTracking) {
@@ -746,7 +746,20 @@
                                 state.timerIntervalId = null;
                                 state.trackingStart = null;
                                 if (isOwner) stopWatchingPosition();
-                                updateStatusMessage('Tracking Stopped — Press Start to resume', 'warning');
+                                updateStatusMessage('Offline — Press Start to begin tracking', 'warning');
+
+                            } else if (firstLoad && serverIsTracking) {
+                                // Page opened while tracking already active in another tab/device.
+                                // Show active UI but NEVER auto-start GPS — only the original tab sends.
+                                log('applyServerState: firstLoad already-active — UI-only, no GPS');
+                                setStartBtn(true);
+                                setStopBtn(false);
+                                if (!state.timerIntervalId) {
+                                    state.trackingStart = Date.now();
+                                    state.timerIntervalId = setInterval(tickTimer, 1000);
+                                }
+                                updateStatusMessage('Tracking Active (another session running) — Location updates every 2 seconds', 'info');
+                                initLiveMap();
 
                             } else if (firstLoad && !serverIsTracking) {
                                 // Fresh page load, not tracking → show clean state
@@ -754,7 +767,6 @@
                                 setStartBtn(false);
                                 setStopBtn(true);
                                 updateStatusMessage('Ready — Press Start to begin tracking', 'info');
-                                // Show clean map without a position marker (Issue 5)
                                 initLiveMap();
                             }
                         }
@@ -789,6 +801,26 @@
                             const interval = state.tracking ? 2000 : 5000;
                             setTimeout(async () => { await pollStatus(); schedulePollStatus(); }, interval);
                         }
+
+                        // ── Heartbeat: keep last_seen fresh when GPS hasn't moved ──
+                        // Fires every 30s while tracking. If GPS watchPosition hasn't
+                        // sent a new fix (background tab, stationary user), this stops
+                        // the server from flipping the tracker to idle/offline.
+                        async function sendHeartbeat() {
+                            if (!state.tracking || !isOwner) return;
+                            if (state.lastLat === null) return;  // No fix yet
+                            try {
+                                await postJson('/salesperson_tracking/update', {
+                                    latitude: state.lastLat,
+                                    longitude: state.lastLng,
+                                    accuracy: 0,
+                                    distance: state.totalDistance,
+                                    tracker_id: trackerId,
+                                });
+                                log('Heartbeat sent lat=%.6f lng=%.6f', state.lastLat, state.lastLng);
+                            } catch(e) { warn('Heartbeat error:', e); }
+                        }
+                        setInterval(sendHeartbeat, 30000);
 
                         // ── Start button ──────────────────────────────────────
                         const startTracking = async () => {
@@ -828,7 +860,7 @@
                                 state.tracking = false;
                                 setStartBtn(false);
                                 setStopBtn(true);
-                                updateStatusMessage('Tracking Stopped — Press Start to resume', 'warning');
+                                updateStatusMessage('Offline — Press Start to begin tracking', 'warning');
                             } catch(e) {
                                 err('stopTracking error:', e);
                                 setStopBtn(false);
@@ -1004,7 +1036,7 @@
                             <span id="statusLabel"><t t-out="tracker.tracking_status_label"/></span>
                         </div>
                         <div class="meta-pill">Logs: <b id="logCount"><t t-out="total_logs"/></b></div>
-                        <div class="meta-pill">Last seen: <b><t t-out="tracker.last_seen or '—'"/></b></div>
+                        <div class="meta-pill">Last seen: <b><t t-out="last_seen_display or '—'"/></b></div>
                     </div>
                 </div>
 

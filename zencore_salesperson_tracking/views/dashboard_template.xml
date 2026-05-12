@@ -932,7 +932,7 @@
                                                 </span>
                                             </td>
                                             <td>
-                                                <span class="stage-badge"><t t-esc="row['state'].capitalize()"/></span>
+                                                <span class="stage-badge"><t t-esc="'In Progress' if row['state'] == 'in_progress' else row['state'].capitalize()"/></span>
                                             </td>
                                             <td>
                                                 <div class="coverage-bar-wrap">
