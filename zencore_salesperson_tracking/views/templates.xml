@@ -1,0 +1,1327 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ══════════════════════════════════════════════════════════════════════════
+         LIVE TRACKING PAGE - UNIFIED DESIGN FOR BOTH SALESPERSON AND MANAGER
+    ═══════════════════════════════════════════════════════════════════════════ -->
+    <template id="live_tracking_page" name="ZenCore Live Tracking Page">
+        <html lang="en">
+            <head>
+                <meta charset="utf-8"/>
+                <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
+                <title>Live GPS Tracking — <t t-out="tracker.user_id.name or user.name"/></title>
+                <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"/>
+                <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+                <style>
+                    * {
+                        margin: 0;
+                        padding: 0;
+                        box-sizing: border-box;
+                    }
+
+                    body {
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                        background: #f0f4f8;
+                        min-height: 100vh;
+                    }
+
+                    /* Main container - Mobile first */
+                    .tracking-container {
+                        max-width: 480px;
+                        margin: 0 auto;
+                        background: #f5f7fb;
+                        min-height: 100vh;
+                    }
+
+                    /* Header */
+                    .app-header {
+                        background: white;
+                        padding: 16px 20px;
+                        border-bottom: 1px solid #e8ecf0;
+                    }
+
+                    .app-header h1 {
+                        font-size: 22px;
+                        font-weight: 600;
+                        color: #1a1f36;
+                        margin-bottom: 4px;
+                    }
+
+                    .app-header-sub {
+                        font-size: 13px;
+                        color: #6b7280;
+                    }
+
+                    /* Stats Grid - 2x3 layout */
+                    .stats-grid {
+                        background: white;
+                        margin: 12px 16px;
+                        border-radius: 20px;
+                        overflow: hidden;
+                        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+                    }
+
+                    .stats-row {
+                        display: flex;
+                        border-bottom: 1px solid #f0f2f5;
+                    }
+
+                    .stats-row:last-child {
+                        border-bottom: none;
+                    }
+
+                    .stat-item {
+                        flex: 1;
+                        padding: 16px 12px;
+                        text-align: center;
+                        border-right: 1px solid #f0f2f5;
+                    }
+
+                    .stat-item:last-child {
+                        border-right: none;
+                    }
+
+                    .stat-label {
+                        font-size: 11px;
+                        font-weight: 500;
+                        color: #8b92a8;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                        margin-bottom: 8px;
+                    }
+
+                    .stat-value {
+                        font-size: 14px;
+                        font-weight: 600;
+                        color: #1a1f36;
+                        word-break: break-word;
+                    }
+
+                    /* KPI Row - 4 columns */
+                    .kpi-row {
+                        display: flex;
+                        background: white;
+                        margin: 12px 16px;
+                        border-radius: 20px;
+                        padding: 16px 12px;
+                        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+                    }
+
+                    .kpi-item {
+                        flex: 1;
+                        text-align: center;
+                    }
+
+                    .kpi-number {
+                        font-size: 24px;
+                        font-weight: 700;
+                        line-height: 1.2;
+                    }
+
+                    .kpi-number.planned { color: #6b7280; }
+                    .kpi-number.visited { color: #10b981; }
+                    .kpi-number.rate { color: #3b82f6; }
+                    .kpi-number.distance { color: #8b5cf6; }
+
+                    .kpi-label {
+                        font-size: 11px;
+                        font-weight: 500;
+                        color: #8b92a8;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                        margin-top: 4px;
+                    }
+
+                    /* Map Container */
+                    .map-container {
+                        margin: 12px 16px;
+                        border-radius: 20px;
+                        overflow: hidden;
+                        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+                        position: relative;
+                    }
+
+                    #liveMap {
+                        height: 280px;
+                        width: 100%;
+                        background: #e8ecf0;
+                    }
+
+                    .map-attribution {
+                        position: absolute;
+                        bottom: 8px;
+                        right: 8px;
+                        background: rgba(255,255,255,0.9);
+                        padding: 2px 8px;
+                        border-radius: 12px;
+                        font-size: 10px;
+                        color: #6b7280;
+                        z-index: 1000;
+                        pointer-events: none;
+                    }
+
+                    /* Action Buttons */
+                    .action-buttons {
+                        display: flex;
+                        gap: 12px;
+                        margin: 16px 16px 12px;
+                        flex-wrap: wrap;
+                    }
+
+                    .btn {
+                        flex: 1;
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 8px;
+                        padding: 12px 20px;
+                        border-radius: 40px;
+                        font-size: 14px;
+                        font-weight: 600;
+                        border: none;
+                        cursor: pointer;
+                        transition: all 0.2s ease;
+                        text-decoration: none;
+                    }
+
+                    .btn-start {
+                        background: #3b82f6;
+                        color: white;
+                        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+                    }
+
+                    .btn-start:hover { background: #2563eb; transform: translateY(-1px); }
+
+                    .btn-stop {
+                        background: #ef4444;
+                        color: white;
+                    }
+
+                    .btn-stop:hover { background: #dc2626; }
+
+                    .btn-camera {
+                        background: #8b5cf6;
+                        color: white;
+                    }
+
+                    .btn-camera:hover { background: #7c3aed; }
+
+                    .btn-map {
+                        background: #f3f4f6;
+                        color: #374151;
+                        border: 1px solid #e5e7eb;
+                    }
+
+                    .btn-map:hover { background: #e5e7eb; }
+
+                    .btn:disabled {
+                        opacity: 0.5;
+                        cursor: not-allowed;
+                        transform: none;
+                    }
+
+                    /* Status Message */
+                    .status-message {
+                        margin: 12px 16px 16px;
+                        padding: 12px 16px;
+                        border-radius: 16px;
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                        font-size: 13px;
+                    }
+
+                    .status-message.info {
+                        background: #ecfdf5;
+                        color: #065f46;
+                        border-left: 3px solid #10b981;
+                    }
+
+                    .status-message.warning {
+                        background: #fef3c7;
+                        color: #92400e;
+                        border-left-color: #f59e0b;
+                    }
+
+                    .status-message.error {
+                        background: #fee2e2;
+                        color: #991b1b;
+                        border-left-color: #ef4444;
+                    }
+
+                    .status-dot {
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 50%;
+                        background: #10b981;
+                        animation: pulse 1.5s infinite;
+                    }
+
+                    .status-dot.idle {
+                        background: #f59e0b;
+                        animation: none;
+                    }
+
+                    .status-dot.offline {
+                        background: #9ca3af;
+                        animation: none;
+                    }
+
+                    @keyframes pulse {
+                        0%, 100% { opacity: 1; transform: scale(1); }
+                        50% { opacity: 0.5; transform: scale(0.8); }
+                    }
+
+                    /* Camera overlay */
+                    .camera-overlay {
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        width: 100%;
+                        height: 100%;
+                        background: black;
+                        z-index: 2000;
+                        display: none;
+                        flex-direction: column;
+                        justify-content: center;
+                        align-items: center;
+                    }
+
+                    .camera-overlay video {
+                        width: 100%;
+                        max-height: 80vh;
+                        object-fit: cover;
+                    }
+
+                    .camera-controls {
+                        position: absolute;
+                        bottom: 40px;
+                        left: 0;
+                        right: 0;
+                        display: flex;
+                        justify-content: center;
+                        gap: 40px;
+                        padding: 20px;
+                        background: rgba(0,0,0,0.6);
+                    }
+
+                    .shutter-btn {
+                        width: 70px;
+                        height: 70px;
+                        border-radius: 50%;
+                        background: white;
+                        border: 3px solid #ddd;
+                        cursor: pointer;
+                    }
+
+                    .shutter-inner {
+                        width: 100%;
+                        height: 100%;
+                        border-radius: 50%;
+                        background: #ef4444;
+                    }
+
+                    .close-camera {
+                        width: 50px;
+                        height: 50px;
+                        border-radius: 50%;
+                        background: #ef4444;
+                        border: none;
+                        color: white;
+                        font-size: 24px;
+                        cursor: pointer;
+                    }
+
+                    .snap-notification {
+                        position: fixed;
+                        bottom: 100px;
+                        left: 20px;
+                        right: 20px;
+                        background: #22c55e;
+                        color: white;
+                        padding: 12px;
+                        border-radius: 50px;
+                        text-align: center;
+                        z-index: 2001;
+                        display: none;
+                    }
+
+                    /* Read-only badge for viewers */
+                    .readonly-badge {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 5px;
+                        background: #fef3c7;
+                        padding: 6px 12px;
+                        border-radius: 20px;
+                        font-size: 12px;
+                        color: #92400e;
+                    }
+                </style>
+            </head>
+            <body>
+                <div id="trackingRoot" 
+                     t-att-data-user-id="user.id" 
+                     t-att-data-tracker-id="tracker.id" 
+                     t-att-data-distance="'%.1f' % total_distance_km" 
+                     t-att-data-is-tracking="'1' if tracker.is_tracking else '0'" 
+                     t-att-data-is-owner="'1' if is_owner else '0'"
+                     style="display:none"/>
+
+                <div class="tracking-container">
+                    <!-- Header -->
+                    <div class="app-header">
+                        <h1>Live GPS Tracking</h1>
+                        <div class="app-header-sub"><t t-out="tracker.user_id.name or user.name"/></div>
+                    </div>
+
+                    <!-- Stats Grid (2x3) -->
+                    <div class="stats-grid">
+                        <div class="stats-row">
+                            <div class="stat-item">
+                                <div class="stat-label">LOCATION</div>
+                                <div class="stat-value" id="locationNameValue"><t t-out="tracker.location_name or '—'"/></div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">LAST UPDATE</div>
+                                <div class="stat-value" id="lastSeenValue"><t t-out="last_seen_display or 'Not tracked'"/></div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">ACCURACY</div>
+                                <div class="stat-value" id="accuracyValue">—</div>
+                            </div>
+                        </div>
+                        <div class="stats-row">
+                            <div class="stat-item">
+                                <div class="stat-label">LATITUDE</div>
+                                <div class="stat-value" id="latitudeValue"><t t-out="'%.6f' % tracker.last_latitude if tracker.last_latitude else '—'"/></div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">LONGITUDE</div>
+                                <div class="stat-value" id="longitudeValue"><t t-out="'%.6f' % tracker.last_longitude if tracker.last_longitude else '—'"/></div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">TAKING TIME</div>
+                                <div class="stat-value" id="takingTimeValue">00:00</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- KPI Row -->
+                    <div class="kpi-row">
+                        <div class="kpi-item">
+                            <div class="kpi-number planned" id="kpiPlan"><t t-out="today_plan_count"/></div>
+                            <div class="kpi-label">PLANNED</div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="kpi-number visited" id="kpiCovered"><t t-out="today_visited_count"/></div>
+                            <div class="kpi-label">VISITED</div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="kpi-number rate" id="kpiRate"><t t-out="today_rate"/>%</div>
+                            <div class="kpi-label">RATE</div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="kpi-number distance" id="kpiDistance"><t t-out="'%.1f' % total_distance_km"/></div>
+                            <div class="kpi-label">KM TODAY</div>
+                        </div>
+                    </div>
+
+                    <!-- Map -->
+                    <div class="map-container">
+                        <div id="liveMap"></div>
+                        <div class="map-attribution">Leaflet | © OpenStreetMap contributors</div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="action-buttons">
+                        <t t-if="is_owner">
+                            <button id="startButton" class="btn btn-start">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <polygon points="10 8 16 12 10 16 10 8"/>
+                                </svg>
+                                Start tracking
+                            </button>
+                            <button id="stopButton" class="btn btn-stop">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <rect x="9" y="9" width="6" height="6"/>
+                                </svg>
+                                Stop
+                            </button>
+                            <button id="openCameraBtn" class="btn btn-camera">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                                    <circle cx="12" cy="13" r="4"/>
+                                </svg>
+                                Open Camera
+                            </button>
+                        </t>
+                        <t t-else="">
+                            <div class="readonly-badge">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                    <circle cx="12" cy="12" r="3"/>
+                                </svg>
+                                Viewing <t t-out="tracker.user_id.name"/>'s live GPS — read only
+                            </div>
+                        </t>
+                        <a t-attf-href="/salesperson_tracking/moving_map/#{tracker.id}" class="btn btn-map" target="_blank">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 22s8-5.5 8-12a8 8 0 1 0-16 0c0 6.5 8 12 8 12z"/>
+                                <circle cx="12" cy="10" r="3"/>
+                            </svg>
+                            Open Map
+                        </a>
+                    </div>
+
+                    <!-- Status Message -->
+                    <div class="status-message info" id="statusMessage">
+                        <span class="status-dot" id="statusDot"></span>
+                        <span id="statusText"><t t-if="is_owner">Tap Start, allow GPS permission, and the browser will send location updates every 2 seconds.</t><t t-else="">You are viewing <t t-out="tracker.user_id.name"/>'s live location. This page auto-updates every 3 seconds.</t></span>
+                    </div>
+                </div>
+
+                <!-- Camera overlay -->
+                <div class="camera-overlay" id="cameraOverlay">
+                    <video id="selfieVideo" autoplay="autoplay" playsinline="playsinline" muted="muted"></video>
+                    <div class="camera-controls">
+                        <button class="shutter-btn" id="captureBtn"><div class="shutter-inner"></div></button>
+                        <button class="close-camera" id="closeCameraBtn">✕</button>
+                    </div>
+                </div>
+                <canvas id="selfieCanvas" style="display:none"></canvas>
+                <div class="snap-notification" id="snapNotification">✓ Photo captured</div>
+
+                <script>
+                <![CDATA[
+                    (function() {
+                        'use strict';
+
+                        // ── Debug logger ──────────────────────────────────────
+                        const log  = (...a) => console.log('[LiveTracking]', ...a);
+                        const warn = (...a) => console.warn('[LiveTracking]', ...a);
+                        const err  = (...a) => console.error('[LiveTracking]', ...a);
+
+                        const root = document.getElementById('trackingRoot');
+                        if (!root) return;
+
+                        const isOwner   = root.dataset.isOwner   === '1';
+                        const trackerId = root.dataset.trackerId;
+
+                        // State is driven by the SERVER (DB) — not by what this tab thinks.
+                        // Every 2 s we poll /status/:id to get the real is_tracking flag.
+                        // This means: if another tab stops tracking, this tab reflects it too.
+                        const state = {
+                            tracking: false,          // mirrors DB is_tracking
+                            gpsIntervalId: null,      // setInterval for GPS send
+                            timerIntervalId: null,    // setInterval for clock
+                            trackingStart: null,      // Date.now() when this tab started sending
+                            lastLat: null,
+                            lastLng: null,
+                            totalDistance: parseFloat(root.dataset.distance || '0'),
+                            consecutiveErrors: 0,
+                            userMovedMap: false,      // true after user manually pans/zooms → disable auto-pan
+                            mapInitialised: false,
+                        };
+
+                        const $ = id => document.getElementById(id);
+
+                        // ── Map ───────────────────────────────────────────────
+                        let liveMap      = null;
+                        let liveMarker   = null;
+                        let livePolyline = null;
+                        let livePath     = [];
+
+                        function initLiveMap() {
+                            if (state.mapInitialised || typeof L === 'undefined') return;
+                            const el = $('liveMap');
+                            if (!el) return;
+                            liveMap = L.map('liveMap', { zoomControl: true }).setView([23.7701, 90.4254], 14);
+                            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                                attribution: '', maxZoom: 19,
+                            }).addTo(liveMap);
+
+                            // Detect manual pan / zoom → disable auto-follow
+                            liveMap.on('dragstart zoomstart', () => {
+                                state.userMovedMap = true;
+                                log('User moved map — auto-pan disabled');
+                            });
+                            state.mapInitialised = true;
+                            log('Map initialised');
+                        }
+
+                        // Push a GPS fix to the map WITHOUT auto-panning unless the
+                        // user has never moved the map (first fix centres the view once).
+                        function pushToMap(lat, lng, firstFix) {
+                            if (!liveMap) initLiveMap();
+                            if (!liveMap) return;
+
+                            livePath.push([lat, lng]);
+
+                            if (livePolyline) {
+                                livePolyline.addLatLng([lat, lng]);
+                            } else {
+                                livePolyline = L.polyline(livePath, { color: '#3b82f6', weight: 4 }).addTo(liveMap);
+                            }
+
+                            if (!liveMarker) {
+                                liveMarker = L.circleMarker([lat, lng], {
+                                    radius: 10, color: '#fff', fillColor: '#ef4444', fillOpacity: 1, weight: 3,
+                                }).addTo(liveMap);
+                            } else {
+                                liveMarker.setLatLng([lat, lng]);
+                            }
+
+                            // Only auto-pan on the very first GPS fix (centres the map),
+                            // never again unless the user explicitly resets.
+                            if (firstFix && !state.userMovedMap) {
+                                liveMap.setView([lat, lng], 16, { animate: true });
+                                log('First fix — map centred on salesperson at zoom 16');
+                            }
+
+                            setTimeout(() => liveMap.invalidateSize(), 100);
+                        }
+
+                        // ── Helpers ───────────────────────────────────────────
+                        const formatDuration = ms => {
+                            const s = Math.floor(ms / 1000);
+                            return `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
+                        };
+
+                        const updateStatusMessage = (message, type = 'info') => {
+                            const msgDiv    = $('statusMessage');
+                            const statusText = $('statusText');
+                            const statusDot  = $('statusDot');
+                            if (!msgDiv || !statusText) return;
+                            statusText.textContent = message;
+                            msgDiv.className = 'status-message ' + type;
+                            if (statusDot) {
+                                statusDot.className = 'status-dot ' + (state.tracking ? 'live' : 'offline');
+                            }
+                        };
+
+                        const setStartBtn = disabled => { const b = $('startButton'); if (b) b.disabled = disabled; };
+                        const setStopBtn  = disabled => { const b = $('stopButton');  if (b) b.disabled = disabled; };
+
+                        const postJson = async (url, payload) => {
+                            const res = await fetch(url, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(payload || {}),
+                                credentials: 'same-origin',
+                                keepalive: true,
+                            });
+                            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                            return res.json();
+                        };
+
+                        const haversine = (lat1, lon1, lat2, lon2) => {
+                            const R = 6371, dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
+                            const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+                            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                        };
+
+                        // ── GPS: high-accuracy options ────────────────────────
+                        // enableHighAccuracy: true requests GPS hardware (not cell/WiFi).
+                        // maximumAge: 0       disables cached positions (always fresh).
+                        // timeout: 15000      gives GPS chip enough time to get a fix.
+                        const GEO_OPTS = { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 };
+
+                        // Watch position for continuous accurate fixes.
+                        let watchId = null;
+
+                        function startWatchingPosition() {
+                            if (watchId !== null) return;
+                            if (!navigator.geolocation) { warn('Geolocation not supported'); return; }
+                            watchId = navigator.geolocation.watchPosition(
+                                onPositionSuccess,
+                                onPositionError,
+                                GEO_OPTS,
+                            );
+                            log('watchPosition started, watchId=%d', watchId);
+                        }
+
+                        function stopWatchingPosition() {
+                            if (watchId !== null) {
+                                navigator.geolocation.clearWatch(watchId);
+                                log('watchPosition cleared, watchId=%d', watchId);
+                                watchId = null;
+                            }
+                        }
+
+                        let pendingPosition = null;   // latest fix from watchPosition
+                        let sendInFlight = false;     // prevent overlapping POSTs
+
+                        async function onPositionSuccess(pos) {
+                            pendingPosition = pos;
+                            if (!state.tracking) return;
+
+                            const lat = pos.coords.latitude;
+                            const lng = pos.coords.longitude;
+                            const acc = pos.coords.accuracy;
+
+                            log('GPS fix: lat=%.6f lng=%.6f accuracy=%.1fm', lat, lng, acc);
+
+                            // Update UI accuracy immediately (don't wait for server round-trip)
+                            if ($('accuracyValue')) $('accuracyValue').textContent = `${acc.toFixed(1)} m`;
+
+                            if (sendInFlight) return;
+                            sendInFlight = true;
+                            try {
+                                const isFirst = state.lastLat === null;
+                                if (!isFirst)
+                                    state.totalDistance += haversine(state.lastLat, state.lastLng, lat, lng);
+                                state.lastLat = lat;
+                                state.lastLng = lng;
+                                state.consecutiveErrors = 0;
+
+                                const result = await postJson('/salesperson_tracking/update', {
+                                    latitude: lat, longitude: lng, accuracy: acc,
+                                    distance: state.totalDistance, tracker_id: trackerId,
+                                });
+
+                                if ($('latitudeValue'))   $('latitudeValue').textContent   = lat.toFixed(6);
+                                if ($('longitudeValue'))  $('longitudeValue').textContent  = lng.toFixed(6);
+                                if ($('locationNameValue')) $('locationNameValue').textContent = result.location_name || '—';
+                                if ($('lastSeenValue'))   $('lastSeenValue').textContent   = result.last_seen || new Date().toLocaleTimeString();
+                                if ($('kpiDistance') && result.total_distance_km != null)
+                                    $('kpiDistance').textContent = parseFloat(result.total_distance_km).toFixed(1);
+
+                                pushToMap(lat, lng, isFirst);
+                                updateStatusMessage('Tracking Active — Location updates every 2 seconds', 'info');
+                            } catch(e) {
+                                err('GPS send error:', e);
+                                state.consecutiveErrors++;
+                                updateStatusMessage(`Send error (${state.consecutiveErrors}/3): ${e.message}`, 'error');
+                                if (state.consecutiveErrors >= 3) {
+                                    warn('3 consecutive errors — reloading page');
+                                    setTimeout(() => location.reload(), 1500);
+                                }
+                            } finally {
+                                sendInFlight = false;
+                            }
+                        }
+
+                        function onPositionError(geoErr) {
+                            let msg;
+                            if (geoErr.code === 1) msg = 'Location access denied — enable GPS in browser settings.';
+                            else if (geoErr.code === 2) msg = 'GPS unavailable — check device location settings.';
+                            else msg = `GPS timeout: ${geoErr.message}`;
+                            err('GPS error code=%d:', geoErr.code, msg);
+                            updateStatusMessage(msg, 'error');
+                        }
+
+                        const tickTimer = () => {
+                            const el = $('takingTimeValue');
+                            if (el && state.trackingStart)
+                                el.textContent = formatDuration(Date.now() - state.trackingStart);
+                        };
+
+                        // ── Apply server state to this tab's UI ───────────────
+                        // Called both on initial load and after every status poll.
+                        function applyServerState(serverIsTracking, firstLoad) {
+                            const wasTracking = state.tracking;
+                            state.tracking = serverIsTracking;
+
+                            if (serverIsTracking && !wasTracking) {
+                                // Server says tracking is ON — sync this tab
+                                log('applyServerState: sync ON (firstLoad=%s)', firstLoad);
+                                setStartBtn(true);
+                                setStopBtn(false);
+                                if (!state.timerIntervalId) {
+                                    state.trackingStart = state.trackingStart || Date.now();
+                                    state.timerIntervalId = setInterval(tickTimer, 1000);
+                                }
+                                if (isOwner) startWatchingPosition();
+                                updateStatusMessage('Tracking Active — Location updates every 2 seconds', 'info');
+
+                            } else if (!serverIsTracking && wasTracking) {
+                                // Server says tracking is OFF — sync this tab (another tab stopped it)
+                                log('applyServerState: sync OFF (firstLoad=%s)', firstLoad);
+                                setStartBtn(false);
+                                setStopBtn(true);
+                                clearInterval(state.timerIntervalId);
+                                state.timerIntervalId = null;
+                                state.trackingStart = null;
+                                if (isOwner) stopWatchingPosition();
+                                updateStatusMessage('Tracking Stopped — Press Start to resume', 'warning');
+
+                            } else if (firstLoad && !serverIsTracking) {
+                                // Fresh page load, not tracking → show clean state
+                                log('applyServerState: initial clean state');
+                                setStartBtn(false);
+                                setStopBtn(true);
+                                updateStatusMessage('Ready — Press Start to begin tracking', 'info');
+                                // Show clean map without a position marker (Issue 5)
+                                initLiveMap();
+                            }
+                        }
+
+                        // ── Cross-tab status polling ──────────────────────────
+                        // Polls every 2 s (tracking) / 5 s (idle).
+                        // If any tab calls Stop, all tabs detect the change here and halt GPS.
+                        async function pollStatus() {
+                            try {
+                                const res  = await fetch(`/salesperson_tracking/status/${trackerId}`);
+                                if (!res.ok) return;
+                                const data = await res.json();
+                                if (!data.ok) return;
+
+                                log('pollStatus: is_tracking=%s status=%s', data.is_tracking, data.status);
+
+                                applyServerState(data.is_tracking, false);
+
+                                // Update last-seen and location name shown on manager view
+                                if (!isOwner) {
+                                    if (data.last_seen    && $('lastSeenValue'))    $('lastSeenValue').textContent    = data.last_seen;
+                                    if (data.location_name && $('locationNameValue')) $('locationNameValue').textContent = data.location_name;
+                                    if (data.last_lat && data.last_lng) {
+                                        if ($('latitudeValue'))  $('latitudeValue').textContent  = parseFloat(data.last_lat).toFixed(6);
+                                        if ($('longitudeValue')) $('longitudeValue').textContent = parseFloat(data.last_lng).toFixed(6);
+                                    }
+                                }
+                            } catch(e) { warn('pollStatus error:', e); }
+                        }
+
+                        function schedulePollStatus() {
+                            const interval = state.tracking ? 2000 : 5000;
+                            setTimeout(async () => { await pollStatus(); schedulePollStatus(); }, interval);
+                        }
+
+                        // ── Start button ──────────────────────────────────────
+                        const startTracking = async () => {
+                            if (state.tracking) { log('startTracking: already tracking — ignored'); return; }
+                            if (!navigator.geolocation) { updateStatusMessage('Geolocation not supported', 'error'); return; }
+
+                            log('startTracking: calling /start');
+                            setStartBtn(true);
+                            updateStatusMessage('Starting…', 'info');
+                            try {
+                                const result = await postJson('/salesperson_tracking/start', { tracker_id: trackerId });
+                                if (!result.ok) { warn('start failed:', result.error); setStartBtn(false); return; }
+                                log('startTracking: server responded ok, already_active=%s', result.already_active);
+                                state.trackingStart = Date.now();
+                                applyServerState(true, false);
+                            } catch(e) {
+                                err('startTracking error:', e);
+                                setStartBtn(false);
+                                updateStatusMessage('Failed to start: ' + e.message, 'error');
+                            }
+                        };
+
+                        // ── Stop button ───────────────────────────────────────
+                        const stopTracking = async () => {
+                            if (!state.tracking) { log('stopTracking: not tracking — ignored'); return; }
+
+                            log('stopTracking: calling /stop');
+                            setStopBtn(true);
+                            try {
+                                await postJson('/salesperson_tracking/stop', { tracker_id: trackerId });
+                                log('stopTracking: server responded ok');
+                                stopWatchingPosition();
+                                clearInterval(state.timerIntervalId);
+                                state.timerIntervalId = null;
+                                state.trackingStart = null;
+                                state.lastLat = state.lastLng = null;
+                                state.tracking = false;
+                                setStartBtn(false);
+                                setStopBtn(true);
+                                updateStatusMessage('Tracking Stopped — Press Start to resume', 'warning');
+                            } catch(e) {
+                                err('stopTracking error:', e);
+                                setStopBtn(false);
+                                updateStatusMessage('Failed to stop: ' + e.message, 'error');
+                            }
+                        };
+
+                        // ── Camera ────────────────────────────────────────────
+                        const cameraOverlay = $('cameraOverlay');
+                        const selfieVideo   = $('selfieVideo');
+                        const selfieCanvas  = $('selfieCanvas');
+                        let stream = null;
+
+                        async function openCamera() {
+                            try {
+                                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                                selfieVideo.srcObject = stream;
+                                cameraOverlay.style.display = 'flex';
+                            } catch(e) { updateStatusMessage('Camera access denied', 'error'); }
+                        }
+                        function closeCamera() {
+                            if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+                            cameraOverlay.style.display = 'none';
+                        }
+                        async function capturePhoto() {
+                            const ctx = selfieCanvas.getContext('2d');
+                            selfieCanvas.width  = selfieVideo.videoWidth;
+                            selfieCanvas.height = selfieVideo.videoHeight;
+                            ctx.drawImage(selfieVideo, 0, 0);
+                            const imageData = selfieCanvas.toDataURL('image/jpeg', 0.8);
+                            try {
+                                const r = await fetch('/salesperson_tracking/save_photo', {
+                                    method: 'POST', credentials: 'same-origin',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ image_data: imageData, filename: `photo_${Date.now()}.jpg` }),
+                                });
+                                const res = await r.json();
+                                if (res.ok) {
+                                    const n = $('snapNotification');
+                                    if (n) { n.style.display = 'block'; setTimeout(() => { n.style.display = 'none'; }, 2000); }
+                                    closeCamera();
+                                }
+                            } catch(e) { updateStatusMessage('Failed to save photo', 'error'); }
+                        }
+
+                        // ── Manager polling (live location view) ──────────────
+                        const pollManagerView = async () => {
+                            if (isOwner) return;
+                            try {
+                                const res  = await fetch('/salesperson_tracking/moving_map_data/' + trackerId);
+                                const data = await res.json();
+                                if (!data.ok || !data.points || !data.points.length) return;
+
+                                if (!liveMap) initLiveMap();
+                                if (livePolyline) { liveMap.removeLayer(livePolyline); livePolyline = null; }
+                                if (liveMarker)   { liveMap.removeLayer(liveMarker);   liveMarker   = null; }
+
+                                livePath = data.points.map(p => [p.lat, p.lng]);
+                                if (livePath.length > 1)
+                                    livePolyline = L.polyline(livePath, { color: '#3b82f6', weight: 4 }).addTo(liveMap);
+
+                                const last = data.points[data.points.length - 1];
+                                liveMarker = L.circleMarker([last.lat, last.lng], {
+                                    radius: 10, color: '#fff', fillColor: '#ef4444', fillOpacity: 1, weight: 3,
+                                }).bindTooltip(data.last_seen || '').addTo(liveMap);
+
+                                // No auto-pan; manager controls their own view
+                                setTimeout(() => liveMap.invalidateSize(), 100);
+
+                                if ($('latitudeValue'))  $('latitudeValue').textContent  = parseFloat(last.lat).toFixed(6);
+                                if ($('longitudeValue')) $('longitudeValue').textContent = parseFloat(last.lng).toFixed(6);
+                                if ($('kpiDistance') && data.total_distance_km != null)
+                                    $('kpiDistance').textContent = parseFloat(data.total_distance_km).toFixed(1);
+                            } catch(e) { warn('pollManagerView error:', e); }
+                        };
+
+                        // ── Boot ──────────────────────────────────────────────
+                        // Read the DB state the server rendered into data attributes.
+                        const serverIsTracking = root.dataset.isTracking === '1';
+                        log('Boot: isOwner=%s trackerId=%s serverIsTracking=%s', isOwner, trackerId, serverIsTracking);
+
+                        if (isOwner) {
+                            const startBtn       = $('startButton');
+                            const stopBtn        = $('stopButton');
+                            const openCameraBtn  = $('openCameraBtn');
+                            const captureBtn     = $('captureBtn');
+                            const closeCameraBtn = $('closeCameraBtn');
+
+                            if (startBtn)      startBtn.addEventListener('click', startTracking);
+                            if (stopBtn)       stopBtn.addEventListener('click', stopTracking);
+                            if (openCameraBtn) openCameraBtn.addEventListener('click', openCamera);
+                            if (captureBtn)    captureBtn.addEventListener('click', capturePhoto);
+                            if (closeCameraBtn) closeCameraBtn.addEventListener('click', closeCamera);
+
+                            // Issue 5: NEVER auto-start — always show clean map until user presses Start.
+                            // applyServerState handles UI-only sync without starting GPS automatically.
+                            applyServerState(serverIsTracking, true);
+
+                        } else {
+                            // Manager/viewer
+                            initLiveMap();
+                            pollManagerView();
+                            setInterval(pollManagerView, 3000);
+                            updateStatusMessage("Viewing salesperson's live location — auto-updates every 3 seconds", 'info');
+                        }
+
+                        // Cross-tab sync polling (both owner and manager benefit)
+                        schedulePollStatus();
+                    })();
+                ]]>
+                </script>
+            </body>
+        </html>
+    </template>
+
+    <!-- ══════════════════════════════════════════════════════════════════════════
+         MOVING MAP PAGE - Shows route path with all points
+    ═══════════════════════════════════════════════════════════════════════════ -->
+    <template id="moving_map_page" name="ZenCore Moving Map View">
+        <html lang="en">
+            <head>
+                <meta charset="utf-8"/>
+                <meta name="viewport" content="width=device-width, initial-scale=1"/>
+                <title>Moving Map — <t t-out="tracker.user_id.name"/></title>
+                <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"/>
+                <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+                <style>
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body { font-family: system-ui, sans-serif; background: #f0f4f8; }
+                    .top-bar { background: white; padding: 12px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+                    .top-bar-left { display: flex; align-items: center; gap: 12px; }
+                    .top-bar-left h1 { font-size: 18px; font-weight: 600; }
+                    .meta-pills { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+                    .meta-pill { background: #f1f5f9; padding: 4px 12px; border-radius: 20px; font-size: 12px; }
+                    .status-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+                    .status-pill.live { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
+                    .status-pill.idle { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+                    .status-pill.offline { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
+                    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+                    .status-dot.live { animation: pulse-dot 1.8s infinite; }
+                    @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
+                    .map-wrapper { position: relative; height: calc(100vh - 70px); }
+                    #map { height: 100%; width: 100%; }
+                    .legend { position: absolute; bottom: 20px; right: 20px; background: white; padding: 8px 12px; border-radius: 8px; font-size: 11px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); z-index: 1000; }
+                    .legend-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+                    .legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+                    .legend-line { width: 18px; height: 3px; display: inline-block; border-radius: 2px; }
+                    .route-info { position: absolute; bottom: 20px; left: 20px; background: white; padding: 10px 16px; border-radius: 40px; box-shadow: 0 2px 12px rgba(0,0,0,0.15); font-size: 13px; font-weight: 600; z-index: 1000; display: flex; gap: 16px; align-items: center; }
+                    .route-stat { display: flex; flex-direction: column; align-items: center; }
+                    .route-stat-val { font-size: 14px; font-weight: 700; color: #0f172a; }
+                    .route-stat-lbl { font-size: 10px; color: #64748b; }
+                    #statusBadge { transition: all .3s; }
+                </style>
+            </head>
+            <body>
+                <div id="mapRoot"
+                     t-att-data-points="points_b64"
+                     t-att-data-customers="customers_b64"
+                     t-att-data-status="tracking_status"
+                     t-att-data-tracker-id="tracker_id"
+                     style="display:none"/>
+
+                <div class="top-bar">
+                    <div class="top-bar-left">
+                        <div>
+                            <h1><t t-out="tracker.user_id.name"/> — Movement Map</h1>
+                            <div style="font-size:12px;color:#64748b;"><t t-out="tracker.sale_team_id.name or 'No team'"/></div>
+                        </div>
+                    </div>
+                    <div class="meta-pills">
+                        <div id="statusBadge" t-attf-class="status-pill {tracking_status}">
+                            <span t-attf-class="status-dot {tracking_status}"/>
+                            <span id="statusLabel"><t t-out="tracker.tracking_status_label"/></span>
+                        </div>
+                        <div class="meta-pill">Logs: <b id="logCount"><t t-out="total_logs"/></b></div>
+                        <div class="meta-pill">Last seen: <b><t t-out="tracker.last_seen or '—'"/></b></div>
+                    </div>
+                </div>
+
+                <div class="map-wrapper">
+                    <div id="map"/>
+                    <div class="route-info" id="routeInfo">
+                        <div class="route-stat">
+                            <span class="route-stat-val" id="distanceVal">— km</span>
+                            <span class="route-stat-lbl">Distance</span>
+                        </div>
+                        <div class="route-stat">
+                            <span class="route-stat-val" id="pointsVal">0</span>
+                            <span class="route-stat-lbl">Points</span>
+                        </div>
+                    </div>
+                    <div class="legend">
+                        <div class="legend-row"><span class="legend-line" style="background:#22c55e;"/>GPS path</div>
+                        <div class="legend-row"><span class="legend-line" style="background:#6366f1;border-top:2px dashed #6366f1;background:none;"/>Reconnect (OSRM)</div>
+                        <div class="legend-row"><span class="legend-dot" style="background:#ef4444;"/> Current pos</div>
+                        <div class="legend-row"><span class="legend-dot" style="background:#3b82f6;"/> Customer</div>
+                        <div class="legend-row"><span class="legend-dot" style="background:#10b981;"/> Visited</div>
+                    </div>
+                </div>
+
+                <script>
+                <![CDATA[
+                (function() {
+                    'use strict';
+
+                    // ── Debug logger ──────────────────────────────────────────
+                    const DEBUG = true; // set false in production
+                    const log = DEBUG
+                        ? (...args) => console.log('[MovingMap]', ...args)
+                        : () => {};
+                    const warn = (...args) => console.warn('[MovingMap]', ...args);
+                    const err  = (...args) => console.error('[MovingMap]', ...args);
+
+                    const mapRoot   = document.getElementById('mapRoot');
+                    const pointsB64 = mapRoot.getAttribute('data-points')    || '';
+                    const custB64   = mapRoot.getAttribute('data-customers') || '';
+                    const initStatus = mapRoot.getAttribute('data-status')   || 'offline';
+                    const trackerId  = parseInt(mapRoot.getAttribute('data-tracker-id') || '0', 10);
+
+                    let points    = [];
+                    let customers = [];
+                    try { points    = JSON.parse(atob(pointsB64)); } catch(e) { warn('points parse error', e); }
+                    try { customers = JSON.parse(atob(custB64)); }   catch(e) { warn('customers parse error', e); }
+
+                    log('Init — trackerId=%d initStatus=%s points=%d customers=%d',
+                        trackerId, initStatus, points.length, customers.length);
+
+                    // ── Map init ──────────────────────────────────────────────
+                    const map = L.map('map').setView([23.7701, 90.4254], 13);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '© OpenStreetMap contributors',
+                    }).addTo(map);
+
+                    // ── Layer order (bottom → top): tiles → customer layer → path → currentMarker ──
+                    // Customer pins are in a LayerGroup that is added BEFORE the path layers,
+                    // so the salesperson marker and path always render on top of them.
+                    const customerLayer  = L.layerGroup().addTo(map);
+                    // Path layers are added dynamically; currentMarker is always added last (topmost).
+
+                    let trackPolylines = [];  // continuous GPS path polylines (one per segment)
+                    let reconnectLines = [];  // dashed OSRM reconnect lines
+                    let startMarker    = null;
+                    let currentMarker  = null;
+                    let allLatLngs     = [];
+
+                    // ── Helpers ───────────────────────────────────────────────
+                    function calcDistKm(pts) {
+                        const R = 6371;
+                        let d = 0;
+                        for (let i = 1; i < pts.length; i++) {
+                            const dLat = (pts[i].lat - pts[i-1].lat) * Math.PI / 180;
+                            const dLng = (pts[i].lng - pts[i-1].lng) * Math.PI / 180;
+                            const a = Math.sin(dLat/2)**2
+                                    + Math.cos(pts[i-1].lat * Math.PI/180)
+                                    * Math.cos(pts[i].lat * Math.PI/180)
+                                    * Math.sin(dLng/2)**2;
+                            d += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                        }
+                        return d;
+                    }
+
+                    function updateStats(pts) {
+                        const dist = calcDistKm(pts);
+                        document.getElementById('distanceVal').textContent = dist.toFixed(2) + ' km';
+                        document.getElementById('pointsVal').textContent   = pts.length;
+                        document.getElementById('logCount').textContent    = pts.length;
+                    }
+
+                    function updateStatus(status, label) {
+                        const badge = document.getElementById('statusBadge');
+                        const dot   = badge ? badge.querySelector('.status-dot') : null;
+                        const lbl   = document.getElementById('statusLabel');
+                        if (badge)  badge.className = 'status-pill ' + status;
+                        if (dot)    dot.className   = 'status-dot ' + status;
+                        if (lbl)    lbl.textContent = label || status;
+                        log('Status updated → %s (%s)', status, label);
+                    }
+
+                    // ── OSRM route between two points ─────────────────────────
+                    async function osrmRoute(fromPt, toPt) {
+                        try {
+                            const url = `https://router.project-osrm.org/route/v1/driving/`
+                                      + `${fromPt.lng},${fromPt.lat};${toPt.lng},${toPt.lat}`
+                                      + `?overview=full&geometries=geojson`;
+                            const res  = await fetch(url, { signal: AbortSignal.timeout(5000) });
+                            const data = await res.json();
+                            if (data.code === 'Ok' && data.routes && data.routes[0]) {
+                                return data.routes[0].geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
+                            }
+                        } catch(e) { warn('OSRM route failed, using straight line:', e); }
+                        return [fromPt, toPt];
+                    }
+
+                    const GAP_SECONDS = 120;
+
+                    function parseTime(t) {
+                        if (!t) return 0;
+                        return new Date(t.replace(' ', 'T')).getTime();
+                    }
+
+                    function splitIntoSegments(pts) {
+                        if (pts.length === 0) return [];
+                        const segs = [];
+                        let cur = [pts[0]];
+                        for (let i = 1; i < pts.length; i++) {
+                            const dt = (parseTime(pts[i].time) - parseTime(pts[i-1].time)) / 1000;
+                            if (dt > GAP_SECONDS) {
+                                log('Gap detected between points %d and %d: %.1f seconds', i-1, i, dt);
+                                segs.push({ points: cur, reconnectTo: pts[i] });
+                                cur = [pts[i]];
+                            } else {
+                                cur.push(pts[i]);
+                            }
+                        }
+                        segs.push({ points: cur, reconnectTo: null });
+                        return segs;
+                    }
+
+                    // ── Render GPS path (salesperson) ─────────────────────────
+                    // Customer layer is untouched here — customer pins stay fixed.
+                    // The salesperson currentMarker is always added last so it renders on top.
+                    async function renderPath(pts) {
+                        log('renderPath: %d points', pts.length);
+
+                        // Clear only salesperson path layers (NOT customerLayer)
+                        trackPolylines.forEach(p => map.removeLayer(p));
+                        trackPolylines = [];
+                        reconnectLines.forEach(l => map.removeLayer(l));
+                        reconnectLines = [];
+                        if (startMarker)   { map.removeLayer(startMarker);   startMarker   = null; }
+                        if (currentMarker) { map.removeLayer(currentMarker); currentMarker = null; }
+
+                        if (pts.length === 0) {
+                            warn('renderPath: no points — salesperson marker not shown');
+                            updateStats([]);
+                            return;
+                        }
+
+                        const segs = splitIntoSegments(pts);
+                        allLatLngs = pts.map(p => [p.lat, p.lng]);
+
+                        log('renderPath: %d segments', segs.length);
+
+                        // Draw GPS track segments
+                        for (const seg of segs) {
+                            if (seg.points.length > 1) {
+                                const lls  = seg.points.map(p => [p.lat, p.lng]);
+                                const poly = L.polyline(lls, { color: '#22c55e', weight: 4, opacity: 0.85 }).addTo(map);
+                                trackPolylines.push(poly);
+                            }
+                            if (seg.reconnectTo) {
+                                const fromPt   = seg.points[seg.points.length - 1];
+                                const routePts = await osrmRoute(fromPt, seg.reconnectTo);
+                                const reconnLine = L.polyline(
+                                    routePts.map(p => [p.lat, p.lng]),
+                                    { color: '#6366f1', weight: 3, opacity: 0.7, dashArray: '8, 6' }
+                                ).addTo(map);
+                                reconnLine.bindTooltip('Reconnected (OSRM route)', { sticky: true });
+                                reconnectLines.push(reconnLine);
+                            }
+                        }
+
+                        // Start marker
+                        startMarker = L.circleMarker([pts[0].lat, pts[0].lng], {
+                            radius: 7, color: '#fff', fillColor: '#22c55e', fillOpacity: 1, weight: 2,
+                            pane: 'markerPane',  // ensures it renders above polylines
+                        }).bindTooltip('Start').addTo(map);
+
+                        // ── Current position marker (ALWAYS added last = topmost) ──
+                        // Using zIndexOffset via a DivIcon trick isn't needed for circleMarker,
+                        // but we add it after everything else so SVG z-order places it on top.
+                        const last = pts[pts.length - 1];
+                        log('renderPath: current position lat=%.6f lng=%.6f time=%s', last.lat, last.lng, last.time);
+                        const tooltip = last.time
+                            ? `Current position\n${last.time}${last.accuracy ? '\nAccuracy: ' + last.accuracy.toFixed(0) + ' m' : ''}`
+                            : 'Current position';
+                        currentMarker = L.circleMarker([last.lat, last.lng], {
+                            radius: 12, color: '#fff', fillColor: '#ef4444', fillOpacity: 1, weight: 3,
+                            pane: 'markerPane',
+                        }).bindTooltip(tooltip, { permanent: false, sticky: false }).addTo(map);
+
+                        // Bring currentMarker to front explicitly
+                        if (currentMarker && currentMarker.bringToFront) {
+                            currentMarker.bringToFront();
+                        }
+
+                        updateStats(pts);
+
+                        // Fit bounds to show salesperson path AND customer pins together
+                        const custLatLngs = customers
+                            .filter(c => c.lat && c.lng)
+                            .map(c => [c.lat, c.lng]);
+                        const allBoundsLatLngs = [...allLatLngs, ...custLatLngs];
+
+                        if (allBoundsLatLngs.length === 1) {
+                            map.setView(allBoundsLatLngs[0], 16);
+                        } else if (allBoundsLatLngs.length > 1) {
+                            map.fitBounds(L.latLngBounds(allBoundsLatLngs), { padding: [50, 50] });
+                        }
+                        setTimeout(() => map.invalidateSize(), 200);
+                    }
+
+                    // ── Customer pins (rendered ONCE into customerLayer, below path) ──
+                    // This layer is not cleared by renderPath, so customer pins stay fixed
+                    // while the salesperson marker moves on top of them.
+                    function renderCustomers(custList) {
+                        customerLayer.clearLayers();
+                        let pinCount = 0;
+                        custList.forEach(c => {
+                            if (!c.lat || !c.lng) {
+                                warn('Customer "%s" has no coordinates — skipped', c.name);
+                                return;
+                            }
+                            const color = c.visited ? '#10b981' : '#3b82f6';
+                            L.circleMarker([c.lat, c.lng], {
+                                radius: 9, color: '#fff', fillColor: color, fillOpacity: 0.85, weight: 2,
+                            })
+                            .bindPopup(`<b>${c.name}</b><br/>${c.visited ? '✓ Visited' : '○ Not yet visited'}`)
+                            .addTo(customerLayer);
+                            pinCount++;
+                            log('Customer pin: "%s" lat=%.6f lng=%.6f visited=%s', c.name, c.lat, c.lng, c.visited);
+                        });
+                        log('renderCustomers: %d pins drawn', pinCount);
+                    }
+
+                    // ── Initial render ────────────────────────────────────────
+                    // Customers first (bottom layer), then salesperson path (on top)
+                    renderCustomers(customers);
+                    renderPath(points);
+
+                    // ── Live polling ──────────────────────────────────────────
+                    let knownPointCount = points.length;
+                    let currentStatus   = initStatus;
+                    let pollErrors      = 0;
+
+                    async function pollMap() {
+                        try {
+                            const res  = await fetch(`/salesperson_tracking/moving_map_data/${trackerId}`);
+                            if (!res.ok) {
+                                warn('pollMap: HTTP %d', res.status);
+                                pollErrors++;
+                                return;
+                            }
+                            const data = await res.json();
+                            if (!data.ok) {
+                                warn('pollMap: server returned ok=false', data);
+                                return;
+                            }
+                            pollErrors = 0;
+
+                            log('pollMap: status=%s points=%d last_lat=%s last_lng=%s',
+                                data.status, data.points.length, data.last_lat, data.last_lng);
+
+                            const statusChanged = data.status !== currentStatus;
+                            currentStatus = data.status;
+                            if (statusChanged) {
+                                updateStatus(data.status, data.status_label);
+                            }
+
+                            // Re-render salesperson path if point count changed OR status changed
+                            if (data.points.length !== knownPointCount || statusChanged) {
+                                log('pollMap: re-rendering path (was %d pts, now %d pts, statusChanged=%s)',
+                                    knownPointCount, data.points.length, statusChanged);
+                                knownPointCount = data.points.length;
+                                await renderPath(data.points);
+                                // After renderPath, bring currentMarker to front again
+                                if (currentMarker && currentMarker.bringToFront) {
+                                    currentMarker.bringToFront();
+                                }
+                            }
+                        } catch(e) {
+                            pollErrors++;
+                            err('pollMap error (consecutive=%d):', pollErrors, e);
+                        }
+                    }
+
+                    function schedulePoll() {
+                        // Poll every 3s when live, 15s otherwise
+                        const interval = currentStatus === 'live' ? 3000 : 15000;
+                        setTimeout(async () => {
+                            await pollMap();
+                            schedulePoll();
+                        }, interval);
+                    }
+
+                    schedulePoll();
+                    log('Polling started, initial interval=%s', currentStatus === 'live' ? '3s' : '15s');
+
+                })();
+                ]]>
+                </script>
+            </body>
+        </html>
+    </template>
+
+</odoo>

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="action_report_tracking_summary" model="ir.actions.report">
+        <field name="name">Tracking Summary Report</field>
+        <field name="model">salesperson.tracker</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">zencore_salesperson_tracking.report_tracking_summary</field>
+        <field name="binding_model_id" ref="model_salesperson_tracker"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <template id="report_tracking_summary">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="tracker">
+                <t t-call="web.external_layout">
+                    <div class="page">
+                        <h2>Tracking Summary Report</h2>
+                        <p><strong>Salesman:</strong> <t t-esc="tracker.user_id.name"/></p>
+                        <p><strong>Visit Date:</strong> <t t-esc="tracker.visit_date"/></p>
+                        <p><strong>Status:</strong> <t t-esc="tracker.state"/></p>
+
+                        <h3>Visit Statistics</h3>
+                        <table class="table">
+                            <tr><th>Total Visits</th><td><t t-esc="tracker.total_visits"/></td></tr>
+                            <tr><th>Visited</th><td><t t-esc="tracker.total_visited"/></td></tr>
+                            <tr><th>Skipped</th><td><t t-esc="tracker.skipped_visits"/></td></tr>
+                        </table>
+
+                        <h3>Timing</h3>
+                        <table class="table">
+                            <tr><th>First Check-In</th><td><t t-esc="tracker.checkin_time"/></td></tr>
+                            <tr><th>Last Check-Out</th><td><t t-esc="tracker.checkout_time"/></td></tr>
+                            <tr><th>Duration (Hours)</th><td><t t-esc="tracker.duration_hours"/></td></tr>
+                            <tr><th>Total Distance (KM)</th><td><t t-esc="tracker.total_distance_km"/></td></tr>
+                        </table>
+
+                        <h3>Expenses</h3>
+                        <table class="table">
+                            <tr><th></th><th>Claimed</th><th>Actual</th></tr>
+                            <tr><td>Transport</td><td><t t-esc="tracker.transport_cost"/></td><td><t t-esc="tracker.actual_transport_cost"/></td></tr>
+                            <tr><td>Food</td><td><t t-esc="tracker.food_cost"/></td><td><t t-esc="tracker.actual_food_cost"/></td></tr>
+                            <tr><td>Other</td><td><t t-esc="tracker.other_cost"/></td><td><t t-esc="tracker.actual_other_cost"/></td></tr>
+                            <tr><td>Total</td><td><t t-esc="tracker.total_cost"/></td><td><t t-esc="tracker.actual_total_cost"/></td></tr>
+                        </table>
+
+                        <h3>Visited Customers</h3>
+                        <table class="table">
+                            <thead><tr><th>Customer</th><th>In</th><th>Exit</th><th>Time Spent</th></tr></thead>
+                            <tbody>
+                                <t t-foreach="tracker.visited_line_ids" t-as="visited">
+                                    <tr>
+                                        <td><t t-esc="visited.partner_id.name"/></td>
+                                        <td><t t-esc="visited.checkin_time"/></td>
+                                        <td><t t-esc="visited.checkout_time"/></td>
+                                        <td><t t-esc="visited.time_spent_minutes"/> min</td>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+
+</odoo>

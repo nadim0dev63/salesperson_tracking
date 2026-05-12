@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="action_report_visit_plan" model="ir.actions.report">
+        <field name="name">Visit Plan Report</field>
+        <field name="model">salesperson.visit.plan</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">zencore_salesperson_tracking.report_visit_plan</field>
+        <field name="binding_model_id" ref="model_salesperson_visit_plan"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <template id="report_visit_plan">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="plan">
+                <t t-call="web.external_layout">
+                    <div class="page">
+                        <h2>Visit Plan Report</h2>
+                        <p><strong>Reference:</strong> <t t-esc="plan.name"/></p>
+                        <p><strong>Salesman:</strong> <t t-esc="plan.user_id.name"/></p>
+                        <p><strong>Visit Date:</strong> <t t-esc="plan.visit_date"/></p>
+                        <p><strong>Purpose:</strong> <t t-esc="plan.purpose"/></p>
+                        <p><strong>Total Visits:</strong> <t t-esc="plan.total_visits"/></p>
+
+                        <h3>Expenses Claim</h3>
+                        <table class="table">
+                            <tr><th>Transport</th><td><t t-esc="plan.transport_cost"/></td></tr>
+                            <tr><th>Food</th><td><t t-esc="plan.food_cost"/></td></tr>
+                            <tr><th>Other</th><td><t t-esc="plan.other_cost"/></td></tr>
+                            <tr><th>Total</th><td><t t-esc="plan.total_cost"/></td></tr>
+                        </table>
+
+                        <h3>Target Lines</h3>
+                        <table class="table">
+                            <thead><tr><th>Customers</th><th>Expected Time</th><th>From/To</th><th>KM</th></tr></thead>
+                            <tbody>
+                                <t t-foreach="plan.target_line_ids" t-as="line">
+                                    <tr>
+                                        <td><t t-esc="', '.join(line.customer_ids.mapped('name'))"/></td>
+                                        <td><t t-esc="line.expected_time_minutes"/> min</td>
+                                        <td><t t-esc="line.from_location"/> → <t t-esc="line.to_location"/></td>
+                                        <td><t t-esc="line.expected_km"/></td>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+
+</odoo>

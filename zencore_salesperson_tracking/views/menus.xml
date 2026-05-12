@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!--
+        ROOT — no action.
+        Odoo walks children in sequence order to find the first leaf with an action.
+        Visit Plans (sequence 10) has proper act_window children → that opens first.
+        Dashboard (sequence 5) has act_url target="new" → opens in new tab, NOT as default.
+
+        The key: act_url with target="new" is intentionally skipped by Odoo's
+        "find first auto-open action" walk, so the app click lands on Visit Plans,
+        not the dashboard URL.
+    -->
+    <menuitem id="menu_salesperson_tracking_root"
+              name="Salesperson Tracking"
+              sequence="90"
+              groups="zencore_salesperson_tracking.group_salesperson_salesman,zencore_salesperson_tracking.group_salesperson_manager"/>
+
+    <!-- ── Visit Plans — sequence 10, becomes the default on app click ─────── -->
+    <menuitem id="menu_salesperson_visit_plan"
+              name="Visit Plans"
+              parent="menu_salesperson_tracking_root"
+              sequence="10"
+              groups="zencore_salesperson_tracking.group_salesperson_salesman,zencore_salesperson_tracking.group_salesperson_manager"/>
+
+    <menuitem id="menu_salesperson_visit_plan_my"
+              name="My Visit Plans"
+              parent="menu_salesperson_visit_plan"
+              action="action_salesperson_visit_plan_my"
+              sequence="10"
+              groups="zencore_salesperson_tracking.group_salesperson_salesman"/>
+
+    <menuitem id="menu_salesperson_visit_plan_all"
+              name="All Visit Plans"
+              parent="menu_salesperson_visit_plan"
+              action="action_salesperson_visit_plan"
+              sequence="20"
+              groups="zencore_salesperson_tracking.group_salesperson_manager"/>
+
+    <!-- ── Live Tracking — sequence 20 ──────────────────────────────────────── -->
+    <menuitem id="menu_salesperson_tracker"
+              name="Live Tracking"
+              parent="menu_salesperson_tracking_root"
+              sequence="20"
+              groups="zencore_salesperson_tracking.group_salesperson_salesman,zencore_salesperson_tracking.group_salesperson_manager"/>
+
+    <menuitem id="menu_salesperson_tracker_my"
+              name="My Tracking"
+              parent="menu_salesperson_tracker"
+              action="action_salesperson_tracker_my_kanban"
+              sequence="10"
+              groups="zencore_salesperson_tracking.group_salesperson_salesman"/>
+
+    <menuitem id="menu_salesperson_tracker_all"
+              name="All Tracking"
+              parent="menu_salesperson_tracker"
+              action="action_salesperson_tracker_kanban"
+              sequence="20"
+              groups="zencore_salesperson_tracking.group_salesperson_manager"/>
+
+    <!-- ── Location Data — sequence 30 ──────────────────────────────────────── -->
+    <menuitem id="menu_salesperson_location"
+              name="Location Data"
+              parent="menu_salesperson_tracking_root"
+              sequence="30"
+              groups="zencore_salesperson_tracking.group_salesperson_manager"/>
+
+    <menuitem id="menu_salesperson_location_log"
+              name="Location History"
+              parent="menu_salesperson_location"
+              action="action_salesperson_location_log"
+              sequence="10"/>
+
+    <menuitem id="menu_salesperson_location_backup"
+              name="Backups"
+              parent="menu_salesperson_location"
+              action="action_salesperson_location_backup"
+              sequence="20"/>
+
+    <!-- ── Dashboard — sequence 40, target="new" opens in new tab ───────────── -->
+    <!--
+        Placed LAST (sequence 40) AND uses target="new".
+        Double protection: even if Odoo somehow picks it up, it opens a new tab
+        instead of replacing the web client, so the app home screen stays intact.
+    -->
+    <record id="action_salesperson_dashboard" model="ir.actions.act_url">
+        <field name="name">Dashboard</field>
+        <field name="url">/salesperson/dashboard</field>
+        <field name="target">new</field>
+    </record>
+
+    <menuitem id="menu_salesperson_dashboard"
+              name="Dashboard"
+              parent="menu_salesperson_tracking_root"
+              action="action_salesperson_dashboard"
+              sequence="40"
+              groups="zencore_salesperson_tracking.group_salesperson_manager"/>
+
+</odoo>
