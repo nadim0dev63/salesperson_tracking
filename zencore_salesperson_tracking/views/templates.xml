@@ -257,11 +257,6 @@
                         animation: pulse 1.5s infinite;
                     }
 
-                    .status-dot.idle {
-                        background: #f59e0b;
-                        animation: none;
-                    }
-
                     .status-dot.offline {
                         background: #9ca3af;
                         animation: none;
@@ -997,7 +992,6 @@
                     .meta-pill { background: #f1f5f9; padding: 4px 12px; border-radius: 20px; font-size: 12px; }
                     .status-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
                     .status-pill.live { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
-                    .status-pill.idle { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
                     .status-pill.offline { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
                     .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
                     .status-dot.live { animation: pulse-dot 1.8s infinite; }
@@ -1053,11 +1047,12 @@
                         </div>
                     </div>
                     <div class="legend">
-                        <div class="legend-row"><span class="legend-line" style="background:#22c55e;"/>GPS path</div>
-                        <div class="legend-row"><span class="legend-line" style="background:#6366f1;border-top:2px dashed #6366f1;background:none;"/>Reconnect (OSRM)</div>
-                        <div class="legend-row"><span class="legend-dot" style="background:#ef4444;"/> Current pos</div>
-                        <div class="legend-row"><span class="legend-dot" style="background:#3b82f6;"/> Customer</div>
-                        <div class="legend-row"><span class="legend-dot" style="background:#10b981;"/> Visited</div>
+                        <div class="legend-row"><span class="legend-line" style="background:#3b82f6;"/>GPS path</div>
+                        <div class="legend-row"><span class="legend-line" style="background:none;border-top:2px dashed #6366f1;"/>Reconnect (OSRM)</div>
+                        <div class="legend-row"><span class="legend-dot" style="background:#22c55e;"/> Current pos (live)</div>
+                        <div class="legend-row"><span class="legend-dot" style="background:#ef4444;"/> Last pos (offline)</div>
+                        <div class="legend-row"><span class="legend-dot" style="background:#3b82f6;"/> Planned customer</div>
+                        <div class="legend-row"><span class="legend-dot" style="background:#15803d;"/> Visited customer</div>
                     </div>
                 </div>
 
@@ -1067,17 +1062,15 @@
                     'use strict';
 
                     // ── Debug logger ──────────────────────────────────────────
-                    const DEBUG = true; // set false in production
-                    const log = DEBUG
-                        ? (...args) => console.log('[MovingMap]', ...args)
-                        : () => {};
-                    const warn = (...args) => console.warn('[MovingMap]', ...args);
-                    const err  = (...args) => console.error('[MovingMap]', ...args);
+                    const DEBUG = true;
+                    const log  = DEBUG ? (...a) => console.log('[MovingMap]', ...a) : () => {};
+                    const warn = (...a) => console.warn('[MovingMap]', ...a);
+                    const err  = (...a) => console.error('[MovingMap]', ...a);
 
-                    const mapRoot   = document.getElementById('mapRoot');
-                    const pointsB64 = mapRoot.getAttribute('data-points')    || '';
-                    const custB64   = mapRoot.getAttribute('data-customers') || '';
-                    const initStatus = mapRoot.getAttribute('data-status')   || 'offline';
+                    const mapRoot    = document.getElementById('mapRoot');
+                    const pointsB64  = mapRoot.getAttribute('data-points')    || '';
+                    const custB64    = mapRoot.getAttribute('data-customers') || '';
+                    const initStatus = mapRoot.getAttribute('data-status')    || 'offline';
                     const trackerId  = parseInt(mapRoot.getAttribute('data-tracker-id') || '0', 10);
 
                     let points    = [];
@@ -1094,22 +1087,18 @@
                         attribution: '© OpenStreetMap contributors',
                     }).addTo(map);
 
-                    // ── Layer order (bottom → top): tiles → customer layer → path → currentMarker ──
-                    // Customer pins are in a LayerGroup that is added BEFORE the path layers,
-                    // so the salesperson marker and path always render on top of them.
-                    const customerLayer  = L.layerGroup().addTo(map);
-                    // Path layers are added dynamically; currentMarker is always added last (topmost).
+                    // Customer layer rendered FIRST → sits below path and salesperson marker
+                    const customerLayer = L.layerGroup().addTo(map);
 
-                    let trackPolylines = [];  // continuous GPS path polylines (one per segment)
-                    let reconnectLines = [];  // dashed OSRM reconnect lines
+                    let trackPolylines = [];
+                    let reconnectLines = [];
                     let startMarker    = null;
                     let currentMarker  = null;
                     let allLatLngs     = [];
 
                     // ── Helpers ───────────────────────────────────────────────
                     function calcDistKm(pts) {
-                        const R = 6371;
-                        let d = 0;
+                        const R = 6371; let d = 0;
                         for (let i = 1; i < pts.length; i++) {
                             const dLat = (pts[i].lat - pts[i-1].lat) * Math.PI / 180;
                             const dLng = (pts[i].lng - pts[i-1].lng) * Math.PI / 180;
@@ -1123,23 +1112,35 @@
                     }
 
                     function updateStats(pts) {
-                        const dist = calcDistKm(pts);
-                        document.getElementById('distanceVal').textContent = dist.toFixed(2) + ' km';
+                        document.getElementById('distanceVal').textContent = calcDistKm(pts).toFixed(2) + ' km';
                         document.getElementById('pointsVal').textContent   = pts.length;
                         document.getElementById('logCount').textContent    = pts.length;
                     }
 
+                    // Fix 2: only live / offline — no idle
                     function updateStatus(status, label) {
+                        // Treat any truthy is_tracking as "live"
+                        const resolved = (status === 'live') ? 'live' : 'offline';
                         const badge = document.getElementById('statusBadge');
                         const dot   = badge ? badge.querySelector('.status-dot') : null;
                         const lbl   = document.getElementById('statusLabel');
-                        if (badge)  badge.className = 'status-pill ' + status;
-                        if (dot)    dot.className   = 'status-dot ' + status;
-                        if (lbl)    lbl.textContent = label || status;
-                        log('Status updated → %s (%s)', status, label);
+                        if (badge) badge.className = 'status-pill ' + resolved;
+                        if (dot)   dot.className   = 'status-dot '  + resolved;
+                        if (lbl)   lbl.textContent = resolved === 'live' ? 'Live' : 'Offline';
+                        log('Status updated → %s', resolved);
                     }
 
-                    // ── OSRM route between two points ─────────────────────────
+                    // ── Fix 1: Parse localized time string for gap detection ──
+                    // Server sends "2026-05-12 14:39:58" (localized). JS Date needs ISO:
+                    function parseTime(t) {
+                        if (!t) return 0;
+                        // Replace space with T; add Z only if no offset present
+                        const iso = t.trim().replace(' ', 'T');
+                        const ms  = new Date(iso).getTime();
+                        return isNaN(ms) ? 0 : ms;
+                    }
+
+                    // ── OSRM reconnect route ──────────────────────────────────
                     async function osrmRoute(fromPt, toPt) {
                         try {
                             const url = `https://router.project-osrm.org/route/v1/driving/`
@@ -1147,45 +1148,40 @@
                                       + `?overview=full&geometries=geojson`;
                             const res  = await fetch(url, { signal: AbortSignal.timeout(5000) });
                             const data = await res.json();
-                            if (data.code === 'Ok' && data.routes && data.routes[0]) {
+                            if (data.code === 'Ok' && data.routes?.[0]) {
                                 return data.routes[0].geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
                             }
-                        } catch(e) { warn('OSRM route failed, using straight line:', e); }
+                        } catch(e) { warn('OSRM failed, using straight line:', e); }
                         return [fromPt, toPt];
                     }
 
                     const GAP_SECONDS = 120;
 
-                    function parseTime(t) {
-                        if (!t) return 0;
-                        return new Date(t.replace(' ', 'T')).getTime();
-                    }
-
                     function splitIntoSegments(pts) {
-                        if (pts.length === 0) return [];
-                        const segs = [];
-                        let cur = [pts[0]];
+                        if (!pts.length) return [];
+                        const segs = []; let cur = [pts[0]];
                         for (let i = 1; i < pts.length; i++) {
                             const dt = (parseTime(pts[i].time) - parseTime(pts[i-1].time)) / 1000;
                             if (dt > GAP_SECONDS) {
-                                log('Gap detected between points %d and %d: %.1f seconds', i-1, i, dt);
+                                log('Gap at [%d→%d]: %.0fs', i-1, i, dt);
                                 segs.push({ points: cur, reconnectTo: pts[i] });
                                 cur = [pts[i]];
-                            } else {
-                                cur.push(pts[i]);
-                            }
+                            } else { cur.push(pts[i]); }
                         }
                         segs.push({ points: cur, reconnectTo: null });
                         return segs;
                     }
 
-                    // ── Render GPS path (salesperson) ─────────────────────────
-                    // Customer layer is untouched here — customer pins stay fixed.
-                    // The salesperson currentMarker is always added last so it renders on top.
-                    async function renderPath(pts) {
-                        log('renderPath: %d points', pts.length);
+                    // ── Fix 3+4: renderPath — correct marker sizes/colors, live path ──
+                    // Live (is_tracking=true)  → current pos marker is GREEN
+                    // Offline (stopped)        → current pos marker is RED
+                    // Path colour: blue (#3b82f6)
+                    // Visited customer: dark green (#15803d)
+                    // Planned (not yet visited): blue (#3b82f6)
+                    // Skipped: yellow (#eab308)
+                    async function renderPath(pts, isLive) {
+                        log('renderPath: %d points, isLive=%s', pts.length, isLive);
 
-                        // Clear only salesperson path layers (NOT customerLayer)
                         trackPolylines.forEach(p => map.removeLayer(p));
                         trackPolylines = [];
                         reconnectLines.forEach(l => map.removeLayer(l));
@@ -1193,143 +1189,128 @@
                         if (startMarker)   { map.removeLayer(startMarker);   startMarker   = null; }
                         if (currentMarker) { map.removeLayer(currentMarker); currentMarker = null; }
 
-                        if (pts.length === 0) {
-                            warn('renderPath: no points — salesperson marker not shown');
-                            updateStats([]);
-                            return;
-                        }
+                        if (!pts.length) { warn('renderPath: no points'); updateStats([]); return; }
 
                         const segs = splitIntoSegments(pts);
                         allLatLngs = pts.map(p => [p.lat, p.lng]);
 
-                        log('renderPath: %d segments', segs.length);
-
-                        // Draw GPS track segments
+                        // ── Fix 4: draw path — blue polyline ─────────────────
                         for (const seg of segs) {
                             if (seg.points.length > 1) {
-                                const lls  = seg.points.map(p => [p.lat, p.lng]);
-                                const poly = L.polyline(lls, { color: '#22c55e', weight: 4, opacity: 0.85 }).addTo(map);
+                                const poly = L.polyline(
+                                    seg.points.map(p => [p.lat, p.lng]),
+                                    { color: '#3b82f6', weight: 4, opacity: 0.9 }
+                                ).addTo(map);
                                 trackPolylines.push(poly);
                             }
                             if (seg.reconnectTo) {
                                 const fromPt   = seg.points[seg.points.length - 1];
                                 const routePts = await osrmRoute(fromPt, seg.reconnectTo);
-                                const reconnLine = L.polyline(
+                                const recoLine = L.polyline(
                                     routePts.map(p => [p.lat, p.lng]),
-                                    { color: '#6366f1', weight: 3, opacity: 0.7, dashArray: '8, 6' }
+                                    { color: '#6366f1', weight: 2, opacity: 0.7, dashArray: '8, 6' }
                                 ).addTo(map);
-                                reconnLine.bindTooltip('Reconnected (OSRM route)', { sticky: true });
-                                reconnectLines.push(reconnLine);
+                                recoLine.bindTooltip('Reconnected (OSRM)', { sticky: true });
+                                reconnectLines.push(recoLine);
                             }
                         }
 
-                        // Start marker
+                        // Start marker — small green dot
                         startMarker = L.circleMarker([pts[0].lat, pts[0].lng], {
-                            radius: 7, color: '#fff', fillColor: '#22c55e', fillOpacity: 1, weight: 2,
-                            pane: 'markerPane',  // ensures it renders above polylines
+                            radius: 5, color: '#fff', fillColor: '#22c55e', fillOpacity: 1, weight: 2,
+                            pane: 'markerPane',
                         }).bindTooltip('Start').addTo(map);
 
-                        // ── Current position marker (ALWAYS added last = topmost) ──
-                        // Using zIndexOffset via a DivIcon trick isn't needed for circleMarker,
-                        // but we add it after everything else so SVG z-order places it on top.
-                        const last = pts[pts.length - 1];
-                        log('renderPath: current position lat=%.6f lng=%.6f time=%s', last.lat, last.lng, last.time);
-                        const tooltip = last.time
-                            ? `Current position\n${last.time}${last.accuracy ? '\nAccuracy: ' + last.accuracy.toFixed(0) + ' m' : ''}`
-                            : 'Current position';
+                        // ── Fix 3: Current position marker ───────────────────
+                        // Small (radius 8), green when live, red when offline
+                        const last        = pts[pts.length - 1];
+                        const markerColor = isLive ? '#22c55e' : '#ef4444';
+                        const tipLabel    = isLive ? '● Live' : '● Last seen';
+                        const tooltip     = `${tipLabel}${last.time ? '\n' + last.time : ''}${last.accuracy ? '\nAccuracy: ' + last.accuracy.toFixed(0) + ' m' : ''}`;
+
                         currentMarker = L.circleMarker([last.lat, last.lng], {
-                            radius: 12, color: '#fff', fillColor: '#ef4444', fillOpacity: 1, weight: 3,
+                            radius: 8, color: '#fff', fillColor: markerColor, fillOpacity: 1, weight: 2,
                             pane: 'markerPane',
                         }).bindTooltip(tooltip, { permanent: false, sticky: false }).addTo(map);
 
-                        // Bring currentMarker to front explicitly
-                        if (currentMarker && currentMarker.bringToFront) {
-                            currentMarker.bringToFront();
-                        }
+                        if (currentMarker.bringToFront) currentMarker.bringToFront();
+
+                        log('renderPath: currentMarker lat=%.6f lng=%.6f color=%s', last.lat, last.lng, markerColor);
 
                         updateStats(pts);
 
-                        // Fit bounds to show salesperson path AND customer pins together
-                        const custLatLngs = customers
-                            .filter(c => c.lat && c.lng)
-                            .map(c => [c.lat, c.lng]);
-                        const allBoundsLatLngs = [...allLatLngs, ...custLatLngs];
-
-                        if (allBoundsLatLngs.length === 1) {
-                            map.setView(allBoundsLatLngs[0], 16);
-                        } else if (allBoundsLatLngs.length > 1) {
-                            map.fitBounds(L.latLngBounds(allBoundsLatLngs), { padding: [50, 50] });
+                        // Fit bounds: path + all customer pins
+                        const custLL = customers.filter(c => c.lat && c.lng).map(c => [c.lat, c.lng]);
+                        const allBounds = [...allLatLngs, ...custLL];
+                        if (allBounds.length === 1) {
+                            map.setView(allBounds[0], 16);
+                        } else if (allBounds.length > 1) {
+                            map.fitBounds(L.latLngBounds(allBounds), { padding: [50, 50] });
                         }
                         setTimeout(() => map.invalidateSize(), 200);
                     }
 
-                    // ── Customer pins (rendered ONCE into customerLayer, below path) ──
-                    // This layer is not cleared by renderPath, so customer pins stay fixed
-                    // while the salesperson marker moves on top of them.
+                    // ── Fix 3: Customer pins — correct colors ─────────────────
+                    // visited  → dark green #15803d
+                    // planned  → blue       #3b82f6
+                    // (skipped would be yellow but we don't have that field yet → remains blue)
                     function renderCustomers(custList) {
                         customerLayer.clearLayers();
-                        let pinCount = 0;
+                        let drawn = 0;
                         custList.forEach(c => {
-                            if (!c.lat || !c.lng) {
-                                warn('Customer "%s" has no coordinates — skipped', c.name);
-                                return;
-                            }
-                            const color = c.visited ? '#10b981' : '#3b82f6';
+                            if (!c.lat || !c.lng) { warn('Customer "%s" missing coords — skip', c.name); return; }
+                            const color   = c.visited ? '#15803d' : '#3b82f6';
+                            const label   = c.visited ? '✓ Visited' : '○ Planned';
                             L.circleMarker([c.lat, c.lng], {
-                                radius: 9, color: '#fff', fillColor: color, fillOpacity: 0.85, weight: 2,
+                                radius: 8, color: '#fff', fillColor: color, fillOpacity: 0.9, weight: 2,
                             })
-                            .bindPopup(`<b>${c.name}</b><br/>${c.visited ? '✓ Visited' : '○ Not yet visited'}`)
+                            .bindPopup(`<b>${c.name}</b><br/>${label}`)
                             .addTo(customerLayer);
-                            pinCount++;
-                            log('Customer pin: "%s" lat=%.6f lng=%.6f visited=%s', c.name, c.lat, c.lng, c.visited);
+                            drawn++;
+                            log('Customer pin: "%s" lat=%.6f lng=%.6f color=%s', c.name, c.lat, c.lng, color);
                         });
-                        log('renderCustomers: %d pins drawn', pinCount);
+                        log('renderCustomers: %d pins drawn', drawn);
                     }
 
                     // ── Initial render ────────────────────────────────────────
-                    // Customers first (bottom layer), then salesperson path (on top)
+                    const isLiveInit = initStatus === 'live';
                     renderCustomers(customers);
-                    renderPath(points);
+                    renderPath(points, isLiveInit);
 
-                    // ── Live polling ──────────────────────────────────────────
+                    // ── Fix 4: Live polling — re-render on every new point ────
                     let knownPointCount = points.length;
                     let currentStatus   = initStatus;
+                    let currentIsLive   = isLiveInit;
                     let pollErrors      = 0;
 
                     async function pollMap() {
                         try {
                             const res  = await fetch(`/salesperson_tracking/moving_map_data/${trackerId}`);
-                            if (!res.ok) {
-                                warn('pollMap: HTTP %d', res.status);
-                                pollErrors++;
-                                return;
-                            }
+                            if (!res.ok) { warn('pollMap HTTP %d', res.status); pollErrors++; return; }
                             const data = await res.json();
-                            if (!data.ok) {
-                                warn('pollMap: server returned ok=false', data);
-                                return;
-                            }
+                            if (!data.ok) { warn('pollMap ok=false', data); return; }
                             pollErrors = 0;
 
-                            log('pollMap: status=%s points=%d last_lat=%s last_lng=%s',
-                                data.status, data.points.length, data.last_lat, data.last_lng);
+                            const newIsLive = !!data.is_tracking;
+                            const newStatus = newIsLive ? 'live' : 'offline';
 
-                            const statusChanged = data.status !== currentStatus;
-                            currentStatus = data.status;
+                            log('pollMap: status=%s points=%d last_lat=%s', newStatus, data.points.length, data.last_lat);
+
+                            const statusChanged = newStatus !== currentStatus;
                             if (statusChanged) {
-                                updateStatus(data.status, data.status_label);
+                                currentStatus = newStatus;
+                                currentIsLive = newIsLive;
+                                updateStatus(newStatus, newIsLive ? 'Live' : 'Offline');
                             }
 
-                            // Re-render salesperson path if point count changed OR status changed
+                            // Fix 4: re-render whenever point count changes (live movement)
+                            // Also re-render on status change so marker color updates
                             if (data.points.length !== knownPointCount || statusChanged) {
-                                log('pollMap: re-rendering path (was %d pts, now %d pts, statusChanged=%s)',
+                                log('pollMap: re-rendering (was %d pts → %d pts, statusChanged=%s)',
                                     knownPointCount, data.points.length, statusChanged);
                                 knownPointCount = data.points.length;
-                                await renderPath(data.points);
-                                // After renderPath, bring currentMarker to front again
-                                if (currentMarker && currentMarker.bringToFront) {
-                                    currentMarker.bringToFront();
-                                }
+                                await renderPath(data.points, newIsLive);
+                                if (currentMarker?.bringToFront) currentMarker.bringToFront();
                             }
                         } catch(e) {
                             pollErrors++;
@@ -1338,16 +1319,13 @@
                     }
 
                     function schedulePoll() {
-                        // Poll every 3s when live, 15s otherwise
-                        const interval = currentStatus === 'live' ? 3000 : 15000;
-                        setTimeout(async () => {
-                            await pollMap();
-                            schedulePoll();
-                        }, interval);
+                        // Poll every 2s when live (to catch each GPS fix), 10s when offline
+                        const interval = currentStatus === 'live' ? 2000 : 10000;
+                        setTimeout(async () => { await pollMap(); schedulePoll(); }, interval);
                     }
 
                     schedulePoll();
-                    log('Polling started, initial interval=%s', currentStatus === 'live' ? '3s' : '15s');
+                    log('Polling started. Status=%s interval=%s', currentStatus, currentStatus === 'live' ? '2s' : '10s');
 
                 })();
                 ]]>

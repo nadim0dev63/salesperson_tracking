@@ -817,7 +817,7 @@
                     <div>
                         <div class="stat-num live-num"><t t-esc="live_count"/></div>
                         <div class="stat-label">Live Right Now</div>
-                        <div class="stat-sub"><t t-esc="idle_count"/> idle · <t t-esc="offline_count"/> offline</div>
+                        <div class="stat-sub"><t t-esc="offline_count"/> offline</div>
                     </div>
                 </div>
 
@@ -872,7 +872,7 @@
                             </div>
                             <div class="card-badges">
                                 <span class="pill live"><span class="pill-dot"/><t t-esc="live_count"/> Live</span>
-                                <span class="pill idle"><span class="pill-dot"/><t t-esc="idle_count"/> Idle</span>
+                                
                                 <span class="pill offline"><span class="pill-dot"/><t t-esc="offline_count"/> Offline</span>
                             </div>
                         </div>
@@ -1204,7 +1204,7 @@
                                 + '<div style="font-weight:600;font-size:13px;margin-bottom:4px;">' + (t.name || '') + '</div>'
                                 + '<div style="font-size:11px;color:#64748B;margin-bottom:6px;">' + (t.location || '—') + '</div>'
                                 + '<div style="display:flex;gap:6px;align-items:center;">'
-                                + '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:600;background:' + (t.status === 'live' ? '#ECFDF5' : t.status === 'idle' ? '#FFFBEB' : '#F1F5F9') + ';color:' + (statusColors[t.status] || '#64748B') + ';">'
+                                + '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:600;background:' + (t.status === 'live' ? '#ECFDF5' : '#F1F5F9') + ';color:' + (t.status === 'live' ? '#059669' : '#64748B') + ';">'
                                 + t.status.charAt(0).toUpperCase() + t.status.slice(1)
                                 + '</span>'
                                 + '<span style="font-size:11px;color:#64748B;">' + t.covered + '/' + t.total + ' visits</span>'

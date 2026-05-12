@@ -70,7 +70,7 @@ class SalespersonTracker(models.Model):
 
     # Tracking Status
     tracking_status = fields.Selection(
-        [("live", "Live"), ("idle", "Idle"), ("offline", "Offline")],
+        [("live", "Live"), ("offline", "Offline")],
         compute="_compute_tracking_status",
         search="_search_tracking_status",
     )
@@ -147,31 +147,18 @@ class SalespersonTracker(models.Model):
             else:
                 tracker.openstreetmap_url = False
 
-    @api.depends("last_seen", "is_tracking")
+    @api.depends("is_tracking")
     def _compute_tracking_status(self):
-        now = fields.Datetime.now()
+        """Two states only: live (is_tracking=True) or offline (is_tracking=False).
+        Idle removed — salesperson is live until they explicitly press Stop."""
         for tracker in self:
-            if not tracker.is_tracking:
-                # Explicitly stopped → always Offline, never Idle
-                status = "offline"
-            elif tracker.last_seen:
-                # is_tracking=True: live if GPS update within 5 min, idle if stalled
-                if tracker.last_seen >= now - timedelta(minutes=5):
-                    status = "live"
-                else:
-                    status = "idle"
-            else:
-                # is_tracking=True but no GPS fix yet
-                status = "idle"
+            status = "live" if tracker.is_tracking else "offline"
             tracker.tracking_status = status
-            tracker.tracking_status_label = dict(self._fields["tracking_status"].selection).get(status)
+            tracker.tracking_status_label = "Live" if tracker.is_tracking else "Offline"
 
     def _search_tracking_status(self, operator, value):
-        now = fields.Datetime.now()
-        live_cutoff = fields.Datetime.to_string(now - timedelta(minutes=5))
         mapping = {
-            "live": [("is_tracking", "=", True), ("last_seen", ">=", live_cutoff)],
-            "idle": ["&", ("is_tracking", "=", True), ("last_seen", "<", live_cutoff)],
+            "live":    [("is_tracking", "=", True)],
             "offline": [("is_tracking", "=", False)],
         }
         if operator != "=" or value not in mapping:

@@ -196,53 +196,69 @@ class SalespersonTrackingController(http.Controller):
         points_b64 = base64.b64encode(json.dumps(points).encode()).decode()
 
         # ── Customer pins ──────────────────────────────────────────────────
-        # IMPORTANT: We read customer coordinates from their *own* partner records
-        # (partner_latitude / partner_longitude), which must NOT be overwritten
-        # by the salesperson's live GPS position (see update_live_location fix).
+        # Sources (in priority order):
+        #   1. tracker.target_line_ids  — rows loaded by action_load_target_lines
+        #   2. tracker.plan_id.target_line_ids — raw plan lines (fallback)
+        #   3. tracker.visited_line_ids — visited customers not already in the plan
+        # We deduplicate by partner.id to avoid double-pins.
+        # Status: visited > not-yet-visited (planned) > skipped (planned but not visited and not remaining)
         customers = []
-        if tracker.plan_id:
-            visited_ids = {v.partner_id.id for v in tracker.visited_line_ids}
-            _logger.debug(
-                "moving_map: plan_id=%s visited_ids=%s",
-                tracker.plan_id.id, visited_ids,
-            )
-            for line in tracker.plan_id.target_line_ids:
-                for customer in line.customer_ids:
-                    lat = customer.partner_latitude
-                    lng = customer.partner_longitude
-                    if lat and lng:
-                        customers.append({
-                            "name": customer.name,
-                            "lat": lat,
-                            "lng": lng,
-                            "visited": customer.id in visited_ids,
-                        })
-                        _logger.debug(
-                            "moving_map: customer pin — name=%r lat=%.6f lng=%.6f visited=%s",
-                            customer.name, lat, lng, customer.id in visited_ids,
-                        )
-                    else:
-                        _logger.debug(
-                            "moving_map: customer %r (id=%s) skipped — no coordinates",
-                            customer.name, customer.id,
-                        )
+        seen_partner_ids = set()
+        visited_ids   = {v.partner_id.id for v in tracker.visited_line_ids}
+        _logger.info(
+            "moving_map: building customer pins tracker=%s plan_id=%s visited_ids=%s",
+            tracker_id, tracker.plan_id.id if tracker.plan_id else None, visited_ids,
+        )
 
-        # Add visited customers that may not be in the plan lines
+        def _add_partner(partner, override_visited=None):
+            if not partner or partner.id in seen_partner_ids:
+                return
+            lat = partner.partner_latitude
+            lng = partner.partner_longitude
+            if not lat or not lng:
+                _logger.debug(
+                    "moving_map: partner %r (id=%s) has no coordinates — skipped",
+                    partner.name, partner.id,
+                )
+                return
+            visited = override_visited if override_visited is not None else (partner.id in visited_ids)
+            customers.append({
+                "id":      partner.id,
+                "name":    partner.name,
+                "lat":     lat,
+                "lng":     lng,
+                "visited": visited,
+            })
+            seen_partner_ids.add(partner.id)
+            _logger.debug(
+                "moving_map: customer pin added — name=%r id=%s lat=%.6f lng=%.6f visited=%s",
+                partner.name, partner.id, lat, lng, visited,
+            )
+
+        # Source 1: tracker.target_line_ids (most reliable — loaded for this tracker)
+        for tline in tracker.target_line_ids:
+            for partner in tline.customer_ids:
+                _add_partner(partner)
+
+        # Source 2: fallback to plan lines if target_line_ids is empty
+        if not seen_partner_ids and tracker.plan_id:
+            _logger.info(
+                "moving_map: no target_line_ids on tracker — falling back to plan_id=%s lines",
+                tracker.plan_id.id,
+            )
+            for pline in tracker.plan_id.target_line_ids:
+                for partner in pline.customer_ids:
+                    _add_partner(partner)
+
+        # Source 3: visited customers not already captured
         for vline in tracker.visited_line_ids:
-            partner = vline.partner_id
-            if partner and partner.partner_latitude and partner.partner_longitude:
-                already = any(c["name"] == partner.name for c in customers)
-                if not already:
-                    customers.append({
-                        "name": partner.name,
-                        "lat": partner.partner_latitude,
-                        "lng": partner.partner_longitude,
-                        "visited": True,
-                    })
+            _add_partner(vline.partner_id, override_visited=True)
 
         _logger.info(
-            "moving_map: %d customer pins for tracker_id=%s",
+            "moving_map: %d customer pins for tracker_id=%s (visited=%d, pending=%d)",
             len(customers), tracker_id,
+            sum(1 for c in customers if c["visited"]),
+            sum(1 for c in customers if not c["visited"]),
         )
 
         customers_b64 = base64.b64encode(json.dumps(customers).encode()).decode()
@@ -278,7 +294,7 @@ class SalespersonTrackingController(http.Controller):
         all_trackers = Tracker.search([("visit_date", "=", today)])
 
         rows = []
-        live_count = idle_count = offline_count = 0
+        live_count = offline_count = 0
         total_planned = total_covered = 0
         deviation_alerts = 0
 
@@ -293,7 +309,7 @@ class SalespersonTrackingController(http.Controller):
         for i, t in enumerate(all_trackers):
             status = t.tracking_status or 'offline'
             if status == 'live':   live_count += 1
-            elif status == 'idle': idle_count += 1
+            # idle removed — is_tracking=True is always 'live'
             else:                  offline_count += 1
 
             total_planned += t.total_visits
@@ -327,7 +343,7 @@ class SalespersonTrackingController(http.Controller):
             ("tracked_at", ">=", today_start),
         ], order="tracked_at desc", limit=20)
 
-        DOT_COLORS = {'live': '#059669', 'idle': '#D97706', 'offline': '#94A3B8'}
+        DOT_COLORS = {'live': '#059669', 'offline': '#94A3B8'}
         activity_feed = []
         for log in logs:
             status = log.tracker_id.tracking_status if log.tracker_id else 'offline'
@@ -374,7 +390,7 @@ class SalespersonTrackingController(http.Controller):
             "today": today_label,
             "rows": rows,
             "live_count": live_count,
-            "idle_count": idle_count,
+            "idle_count": 0,  # idle removed — was merged into live
             "offline_count": offline_count,
             "total_reps": len(rows),
             "total_planned": total_planned,
@@ -560,10 +576,13 @@ class SalespersonTrackingController(http.Controller):
             tracker_id, tracker.tracking_status, len(points), total_dist,
         )
 
+        # status = "live" when is_tracking=True, "offline" otherwise (idle removed)
+        status = "live" if tracker.is_tracking else "offline"
         return self._json_response({
             "ok": True,
-            "status": tracker.tracking_status or "offline",
-            "status_label": tracker.tracking_status_label,
+            "status": status,
+            "status_label": "Live" if tracker.is_tracking else "Offline",
+            "is_tracking": tracker.is_tracking,
             "points": points,
             "last_lat": tracker.last_latitude or 0,
             "last_lng": tracker.last_longitude or 0,
