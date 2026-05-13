@@ -94,6 +94,9 @@ class SalespersonTrackingController(http.Controller):
             if not tracker.exists():
                 return request.not_found()
         else:
+            # No tracker_id supplied → always open the current user's own tracker.
+            # This is the correct path for both salesperson AND manager accessing
+            # their own live page (e.g. via dashboard or direct URL on mobile).
             tracker = user._ensure_salesperson_tracker()
 
         today = fields.Date.today()
@@ -109,6 +112,15 @@ class SalespersonTrackingController(http.Controller):
         tz_name = self._user_tz(user)
         last_seen_display = _localize_dt(tracker.last_seen, tz_name) if tracker.last_seen else 'Not tracked'
 
+        # is_owner determines whether Start/Stop buttons are shown.
+        # A user is the owner when:
+        #   1. The tracker explicitly belongs to them (tracker_id supplied and matches), OR
+        #   2. No tracker_id was supplied → we resolved their own tracker above, so they
+        #      are always the owner.
+        # Note: a Manager visiting a *salesperson's* tracker via ?tracker_id=X will get
+        # is_owner=False (read-only view), which is the intended behaviour.
+        is_owner = tracker.user_id.id == user.id
+
         values = {
             "tracker": tracker,
             "user": user,
@@ -117,7 +129,7 @@ class SalespersonTrackingController(http.Controller):
             "today_visited_count": tracker.total_visited,
             "today_rate": int(tracker.total_visited * 100 / tracker.total_visits) if tracker.total_visits else 0,
             "last_seen_display": last_seen_display,
-            "is_owner": tracker.user_id.id == user.id,
+            "is_owner": is_owner,
         }
         return request.render("zencore_salesperson_tracking.live_tracking_page", values)
 

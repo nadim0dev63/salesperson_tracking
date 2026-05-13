@@ -1060,6 +1060,28 @@
                     </div>
 
                     <!-- PERSONAL STATS (salesperson only) -->
+                    <!-- MANAGER: quick link to their own live tracker page (mobile-friendly) -->
+                    <t t-if="is_manager">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                                    </svg>
+                                    My Tracking
+                                </div>
+                            </div>
+                            <div style="padding:0 20px 16px;">
+                                <a href="/salesperson_tracking/live" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;background:linear-gradient(135deg,#2563EB,#4F46E5);color:#fff;border-radius:var(--radius-md);text-decoration:none;font-size:13px;font-weight:600;transition:opacity .15s;" onmouseover="this.style.opacity='.88'" onmouseout="this.style.opacity='1'">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
+                                        <path d="M12 22s8-5.5 8-12a8 8 0 1 0-16 0c0 6.5 8 12 8 12z"/><circle cx="12" cy="10" r="3"/>
+                                    </svg>
+                                    Open My Tracker
+                                </a>
+                            </div>
+                        </div>
+                    </t>
+
                     <t t-if="not is_manager and my_tracker">
                         <div class="card">
                             <div class="card-header">
