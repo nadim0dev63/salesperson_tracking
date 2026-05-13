@@ -649,8 +649,8 @@
 
                         const GEO_OPTS_TICK = {
                             enableHighAccuracy: true,
-                            timeout: 8000,       // 8s for slow mobile GPS
-                            maximumAge: 2000,    // accept fix up to 2s old
+                            timeout: 30000,       // 30s for slow mobile GPS
+                            maximumAge: 10000,    // accept fix up to 10s old
                         };
 
                         let sendIntervalId  = null;
@@ -1212,7 +1212,7 @@
                             const url = `https://router.project-osrm.org/route/v1/driving/`
                                       + `${fromPt.lng},${fromPt.lat};${toPt.lng},${toPt.lat}`
                                       + `?overview=full&geometries=geojson`;
-                            const res  = await fetch(url, { signal: AbortSignal.timeout(5000) });
+                            const res  = await fetch(url, { signal: AbortSignal.timeout(30000) });
                             const data = await res.json();
                             if (data.code === 'Ok' && data.routes?.[0]) {
                                 return data.routes[0].geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
