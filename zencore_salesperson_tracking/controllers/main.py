@@ -109,11 +109,29 @@ class SalespersonTrackingController(http.Controller):
                 return request.not_found()
         else:
             # No tracker_id supplied → open the current user's own tracker.
-            # Use sudo() here because the Administrator may not be in the module's
-            # ACL groups (group_salesperson_salesman / group_salesperson_manager),
-            # so running _ensure_salesperson_tracker without sudo would raise an
-            # AccessError on create when the tracker doesn't exist yet.
-            tracker = user.sudo()._ensure_salesperson_tracker()
+            # IMPORTANT: Do NOT call user.sudo()._ensure_salesperson_tracker() —
+            # sudo() on a recordset changes `self` to superuser (id=1), so the
+            # tracker would be created for OdooBot, not the logged-in user.
+            # Instead, run the search/create via sudo on the *model*, passing the
+            # real user.id explicitly, so ACL restrictions are bypassed safely.
+            tracker = request.env["salesperson.tracker"].sudo().search([
+                ("user_id", "=", user.id),
+                ("visit_date", "=", fields.Date.today()),
+            ], limit=1)
+            if not tracker:
+                tracker = request.env["salesperson.tracker"].sudo().create({
+                    "user_id": user.id,
+                    "visit_date": fields.Date.today(),
+                    "state": "planned",
+                })
+                # Link a visit plan for today if one exists
+                plan = request.env["salesperson.visit.plan"].sudo().search([
+                    ("user_id", "=", user.id),
+                    ("planned_date", "=", fields.Date.today()),
+                ], limit=1)
+                if plan:
+                    tracker.plan_id = plan.id
+                    tracker.action_load_target_lines()
 
         today = fields.Date.today()
         today_start = fields.Datetime.to_datetime(today)
