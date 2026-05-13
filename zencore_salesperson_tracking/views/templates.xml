@@ -359,8 +359,9 @@
                      t-att-data-user-id="user.id" 
                      t-att-data-tracker-id="tracker.id" 
                      t-att-data-distance="'%.1f' % total_distance_km" 
-                     t-att-data-is-tracking="'1' if tracker.is_tracking else '0'" 
+                     t-att-data-is-tracking="'1' if tracker.is_tracking else '0'"
                      t-att-data-is-owner="'1' if is_owner else '0'"
+                     t-att-data-last-seen-ts="int(tracker.last_seen.timestamp()) if tracker.last_seen else 0"
                      style="display:none"/>
 
                 <div class="tracking-container">
@@ -991,36 +992,42 @@
                         };
 
                         // ── Boot ──────────────────────────────────────────────
-                        // Read the DB state the server rendered into data attributes.
+                        // /live is always the current user's own page → isOwner always true.
                         const serverIsTracking = root.dataset.isTracking === '1';
-                        log('Boot: isOwner=%s trackerId=%s serverIsTracking=%s', isOwner, trackerId, serverIsTracking);
+                        const lastSeenTs       = parseInt(root.dataset.lastSeenTs || '0', 10);
+                        log('Boot: isOwner=%s trackerId=%s serverIsTracking=%s lastSeenTs=%s',
+                            isOwner, trackerId, serverIsTracking, lastSeenTs);
 
-                        if (isOwner) {
-                            const startBtn       = $('startButton');
-                            const stopBtn        = $('stopButton');
-                            const openCameraBtn  = $('openCameraBtn');
-                            const captureBtn     = $('captureBtn');
-                            const closeCameraBtn = $('closeCameraBtn');
+                        const startBtn       = $('startButton');
+                        const stopBtn        = $('stopButton');
+                        const openCameraBtn  = $('openCameraBtn');
+                        const captureBtn     = $('captureBtn');
+                        const closeCameraBtn = $('closeCameraBtn');
 
-                            if (startBtn)      startBtn.addEventListener('click', startTracking);
-                            if (stopBtn)       stopBtn.addEventListener('click', stopTracking);
-                            if (openCameraBtn) openCameraBtn.addEventListener('click', openCamera);
-                            if (captureBtn)    captureBtn.addEventListener('click', capturePhoto);
-                            if (closeCameraBtn) closeCameraBtn.addEventListener('click', closeCamera);
+                        if (startBtn)       startBtn.addEventListener('click', startTracking);
+                        if (stopBtn)        stopBtn.addEventListener('click', stopTracking);
+                        if (openCameraBtn)  openCameraBtn.addEventListener('click', openCamera);
+                        if (captureBtn)     captureBtn.addEventListener('click', capturePhoto);
+                        if (closeCameraBtn) closeCameraBtn.addEventListener('click', closeCamera);
 
-                            // Issue 5: NEVER auto-start — always show clean map until user presses Start.
-                            // applyServerState handles UI-only sync without starting GPS automatically.
-                            applyServerState(serverIsTracking, true);
-
+                        // ── Stale-session reset ───────────────────────────────
+                        // If the tracker is marked active but last_seen is >10 min ago,
+                        // the previous session crashed without stopping. Auto-reset it
+                        // so this page load starts clean (not "already tracking").
+                        const STALE_MS = 10 * 60 * 1000;
+                        const isStale  = serverIsTracking && lastSeenTs > 0
+                                      && (Date.now() - lastSeenTs * 1000) > STALE_MS;
+                        if (isStale) {
+                            log('Boot: stale session detected — auto-stopping');
+                            postJson('/salesperson_tracking/stop', { tracker_id: trackerId })
+                                .catch(e => warn('stale stop error:', e));
+                            applyServerState(false, true);
                         } else {
-                            // Manager/viewer
-                            initLiveMap();
-                            pollManagerView();
-                            setInterval(pollManagerView, 3000);
-                            updateStatusMessage("Viewing salesperson's live location — auto-updates every 3 seconds", 'info');
+                            // NEVER auto-start GPS — only start when user clicks Start.
+                            applyServerState(serverIsTracking, true);
                         }
 
-                        // Cross-tab sync polling (both owner and manager benefit)
+                        // Cross-tab sync polling
                         schedulePollStatus();
                     })();
                 ]]>

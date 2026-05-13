@@ -451,16 +451,13 @@ class SalespersonTracker(models.Model):
             })
 
     def action_open_live_tracking_page(self):
+        """Always opens /live — the personal page for whoever clicks it.
+        The page resolves the user's own tracker via _ensure_salesperson_tracker().
+        """
         self.ensure_one()
-        # Open without tracker_id when viewing your own tracker so the server
-        # always resolves is_owner=True via _ensure_salesperson_tracker().
-        if int(self.user_id.id) == int(self.env.user.id):
-            url = "/salesperson_tracking/live"
-        else:
-            url = f"/salesperson_tracking/live?tracker_id={self.id}"
         return {
             "type": "ir.actions.act_url",
-            "url": url,
+            "url": "/salesperson_tracking/live",
             "target": "self",
         }
 

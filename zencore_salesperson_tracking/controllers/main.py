@@ -86,16 +86,14 @@ class SalespersonTrackingController(http.Controller):
     # ── Pages ─────────────────────────────────────────────────────────────────
 
     @http.route("/salesperson_tracking/live", type="http", auth="user", website=False)
-    def live_tracking_page(self, tracker_id=None, **kwargs):
+    def live_tracking_page(self, **kwargs):
+        """Personal live tracking page — always shows the current user's OWN tracker.
+        tracker_id param is intentionally removed: /live is always 'my page'.
+        To view a salesperson's location use /moving_map/<tracker_id>.
+        This guarantees is_owner=True for every user who opens their own /live page.
+        """
         user = self._check_access()
-
-        if tracker_id:
-            tracker = request.env["salesperson.tracker"].sudo().browse(int(tracker_id))
-            if not tracker.exists():
-                return request.not_found()
-        else:
-            # No tracker_id in URL — always the user's own page
-            tracker = user._ensure_salesperson_tracker()
+        tracker = user._ensure_salesperson_tracker()
 
         today = fields.Date.today()
         today_start = fields.Datetime.to_datetime(today)
@@ -118,17 +116,12 @@ class SalespersonTrackingController(http.Controller):
             "today_visited_count": tracker.total_visited,
             "today_rate": int(tracker.total_visited * 100 / tracker.total_visits) if tracker.total_visits else 0,
             "last_seen_display": last_seen_display,
-            # is_owner: True  → show Start/Stop buttons (this is YOUR tracker)
-            #           False → show read-only badge (viewing someone else's tracker)
-            # Compare raw integer IDs — sudo() on tracker does not change field values.
-            "is_owner": int(tracker.user_id.id) == int(user.id),
+            # /live is always the current user's own page → is_owner always True
+            "is_owner": True,
         }
         _logger.info(
-            "live_tracking_page: uid=%s(%s) tracker=%s tracker_uid=%s(%s) is_owner=%s url_tracker_id=%s",
-            user.id, user.name,
-            tracker.id,
-            tracker.user_id.id, tracker.user_id.name,
-            values["is_owner"], tracker_id,
+            "live_tracking_page: uid=%s(%s) tracker=%s is_owner=True",
+            user.id, user.name, tracker.id,
         )
         return request.render("zencore_salesperson_tracking.live_tracking_page", values)
 
