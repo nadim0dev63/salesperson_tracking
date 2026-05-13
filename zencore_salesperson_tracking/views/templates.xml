@@ -622,91 +622,158 @@
                         // enableHighAccuracy: true requests GPS hardware (not cell/WiFi).
                         // maximumAge: 0       disables cached positions (always fresh).
                         // timeout: 15000      gives GPS chip enough time to get a fix.
-                        const GEO_OPTS = { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 };
+                        // ══════════════════════════════════════════════════════
+                        // GPS ARCHITECTURE
+                        // ──────────────────────────────────────────────────────
+                        // Each tick calls getCurrentPosition() directly.
+                        // This guarantees a FRESH position reading every 2 s
+                        // regardless of movement — no stale cached position.
+                        //
+                        // Why NOT watchPosition?
+                        //   On mobile, watchPosition fires only on OS movement
+                        //   events. Stationary users get zero callbacks, so
+                        //   latestPos stays stale and logs stop being written.
+                        //
+                        // Why getCurrentPosition every tick?
+                        //   maximumAge:0 forces a fresh hardware reading.
+                        //   timeout:4000 ensures it finishes before the next tick.
+                        //   This is the only reliable way to log every 2 s.
+                        //
+                        // Geocoding (reverse lookup) is done SEPARATELY every 30 s
+                        // via /geocode — never inside update_live_location — so a
+                        // slow Nominatim response never blocks log creation.
+                        // ══════════════════════════════════════════════════════
 
-                        // Watch position for continuous accurate fixes.
-                        let watchId = null;
+                        const GEO_OPTS_TICK = {
+                            enableHighAccuracy: true,
+                            timeout: 4000,       // must finish before next 2 s tick
+                            maximumAge: 0,       // ALWAYS fresh — never cached
+                        };
 
-                        function startWatchingPosition() {
-                            if (watchId !== null) return;
-                            if (!navigator.geolocation) { warn('Geolocation not supported'); return; }
-                            watchId = navigator.geolocation.watchPosition(
-                                onPositionSuccess,
-                                onPositionError,
-                                GEO_OPTS,
+                        let sendIntervalId  = null;
+                        let tickBusy        = false;   // prevent overlapping ticks
+                        let geocodeIntervalId = null;
+                        let lastGeocodeLat  = null;
+                        let lastGeocodeLng  = null;
+
+                        // ── Single tick: get fresh GPS fix then POST ──────────
+                        function doTick() {
+                            if (!state.tracking || !isOwner) return;
+                            if (tickBusy) {
+                                log('doTick: previous tick still running — skipping');
+                                return;
+                            }
+                            tickBusy = true;
+
+                            navigator.geolocation.getCurrentPosition(
+                                async function(pos) {
+                                    const lat = pos.coords.latitude;
+                                    const lng = pos.coords.longitude;
+                                    const acc = pos.coords.accuracy;
+
+                                    log('doTick: GPS lat=%.6f lng=%.6f acc=%.1fm', lat, lng, acc);
+                                    if ($('accuracyValue')) $('accuracyValue').textContent = acc.toFixed(1) + ' m';
+
+                                    const isFirst = state.lastLat === null;
+                                    // tickDelta = distance moved since last tick (km).
+                                    // We send only the INCREMENT, not cumulative total.
+                                    // Server adds this to its own running total.
+                                    let tickDelta = 0;
+                                    if (!isFirst)
+                                        tickDelta = haversine(state.lastLat, state.lastLng, lat, lng);
+                                    state.totalDistance += tickDelta;
+                                    state.lastLat = lat;
+                                    state.lastLng = lng;
+
+                                    try {
+                                        const result = await postJson('/salesperson_tracking/update', {
+                                            latitude:   lat,
+                                            longitude:  lng,
+                                            accuracy:   acc,
+                                            distance:   tickDelta,   // per-tick delta, NOT cumulative
+                                            tracker_id: trackerId,
+                                        });
+                                        state.consecutiveErrors = 0;
+
+                                        if ($('latitudeValue'))  $('latitudeValue').textContent  = lat.toFixed(6);
+                                        if ($('longitudeValue')) $('longitudeValue').textContent = lng.toFixed(6);
+                                        if ($('lastSeenValue'))  $('lastSeenValue').textContent  = result.last_seen || new Date().toLocaleTimeString();
+                                        if ($('kpiDistance') && result.total_distance_km != null)
+                                            $('kpiDistance').textContent = parseFloat(result.total_distance_km).toFixed(1);
+
+                                        pushToMap(lat, lng, isFirst);
+                                        updateStatusMessage('Tracking Active — updating every 2 seconds', 'info');
+
+                                    } catch(e) {
+                                        state.consecutiveErrors++;
+                                        err('doTick POST error (%d/5): %s', state.consecutiveErrors, e.message);
+                                        updateStatusMessage('Update error: ' + e.message, 'error');
+                                        if (state.consecutiveErrors >= 5) {
+                                            warn('5 consecutive errors — stopping');
+                                            stopSendInterval();
+                                        }
+                                    } finally {
+                                        tickBusy = false;
+                                    }
+                                },
+                                function(geoErr) {
+                                    tickBusy = false;
+                                    const msgs = {
+                                        1: 'Location access denied — enable GPS in browser settings.',
+                                        2: 'GPS signal unavailable.',
+                                        3: 'GPS timeout — will retry next tick.',
+                                    };
+                                    const msg = msgs[geoErr.code] || ('GPS error: ' + geoErr.message);
+                                    err('doTick GPS error code=%d: %s', geoErr.code, msg);
+                                    updateStatusMessage(msg, 'error');
+                                },
+                                GEO_OPTS_TICK
                             );
-                            log('watchPosition started, watchId=%d', watchId);
                         }
 
-                        function stopWatchingPosition() {
-                            if (watchId !== null) {
-                                navigator.geolocation.clearWatch(watchId);
-                                log('watchPosition cleared, watchId=%d', watchId);
-                                watchId = null;
+                        function startSendInterval() {
+                            if (sendIntervalId !== null) return;
+                            tickBusy = false;
+                            doTick();   // fire immediately
+                            sendIntervalId = setInterval(doTick, 2000);
+                            log('sendInterval started (every 2 s)');
+
+                            // Geocode every 30 s — separate from log updates
+                            geocodeIntervalId = setInterval(async () => {
+                                if (!state.tracking || state.lastLat === null) return;
+                                if (Math.abs(state.lastLat - (lastGeocodeLat || 0)) < 0.0005 &&
+                                    Math.abs(state.lastLng - (lastGeocodeLng || 0)) < 0.0005 &&
+                                    lastGeocodeLat !== null) return;  // haven't moved enough
+                                lastGeocodeLat = state.lastLat;
+                                lastGeocodeLng = state.lastLng;
+                                try {
+                                    const r = await postJson('/salesperson_tracking/geocode', {
+                                        latitude: state.lastLat, longitude: state.lastLng,
+                                        tracker_id: trackerId,
+                                    });
+                                    if (r.ok && r.location_name && $('locationNameValue'))
+                                        $('locationNameValue').textContent = r.location_name;
+                                } catch(e) { warn('geocode error:', e); }
+                            }, 30000);
+                        }
+
+                        function stopSendInterval() {
+                            if (sendIntervalId !== null) {
+                                clearInterval(sendIntervalId);
+                                sendIntervalId = null;
                             }
-                        }
-
-                        let pendingPosition = null;   // latest fix from watchPosition
-                        let sendInFlight = false;     // prevent overlapping POSTs
-
-                        async function onPositionSuccess(pos) {
-                            pendingPosition = pos;
-                            if (!state.tracking) return;
-
-                            const lat = pos.coords.latitude;
-                            const lng = pos.coords.longitude;
-                            const acc = pos.coords.accuracy;
-
-                            log('GPS fix: lat=%.6f lng=%.6f accuracy=%.1fm', lat, lng, acc);
-
-                            // Update UI accuracy immediately (don't wait for server round-trip)
-                            if ($('accuracyValue')) $('accuracyValue').textContent = `${acc.toFixed(1)} m`;
-
-                            if (sendInFlight) return;
-                            sendInFlight = true;
-                            try {
-                                const isFirst = state.lastLat === null;
-                                if (!isFirst)
-                                    state.totalDistance += haversine(state.lastLat, state.lastLng, lat, lng);
-                                state.lastLat = lat;
-                                state.lastLng = lng;
-                                state.consecutiveErrors = 0;
-
-                                const result = await postJson('/salesperson_tracking/update', {
-                                    latitude: lat, longitude: lng, accuracy: acc,
-                                    distance: state.totalDistance, tracker_id: trackerId,
-                                });
-
-                                if ($('latitudeValue'))   $('latitudeValue').textContent   = lat.toFixed(6);
-                                if ($('longitudeValue'))  $('longitudeValue').textContent  = lng.toFixed(6);
-                                if ($('locationNameValue')) $('locationNameValue').textContent = result.location_name || '—';
-                                if ($('lastSeenValue'))   $('lastSeenValue').textContent   = result.last_seen || new Date().toLocaleTimeString();
-                                if ($('kpiDistance') && result.total_distance_km != null)
-                                    $('kpiDistance').textContent = parseFloat(result.total_distance_km).toFixed(1);
-
-                                pushToMap(lat, lng, isFirst);
-                                updateStatusMessage('Tracking Active — Location updates every 2 seconds', 'info');
-                            } catch(e) {
-                                err('GPS send error:', e);
-                                state.consecutiveErrors++;
-                                updateStatusMessage(`Send error (${state.consecutiveErrors}/3): ${e.message}`, 'error');
-                                if (state.consecutiveErrors >= 3) {
-                                    warn('3 consecutive errors — reloading page');
-                                    setTimeout(() => location.reload(), 1500);
-                                }
-                            } finally {
-                                sendInFlight = false;
+                            if (geocodeIntervalId !== null) {
+                                clearInterval(geocodeIntervalId);
+                                geocodeIntervalId = null;
                             }
+                            tickBusy = false;
+                            log('sendInterval stopped');
                         }
 
-                        function onPositionError(geoErr) {
-                            let msg;
-                            if (geoErr.code === 1) msg = 'Location access denied — enable GPS in browser settings.';
-                            else if (geoErr.code === 2) msg = 'GPS unavailable — check device location settings.';
-                            else msg = `GPS timeout: ${geoErr.message}`;
-                            err('GPS error code=%d:', geoErr.code, msg);
-                            updateStatusMessage(msg, 'error');
-                        }
+                        // startWatchingPosition / stopWatchingPosition kept as no-ops
+                        // so call-sites in applyServerState / stopTracking still work.
+                        function startWatchingPosition() {}
+                        function stopWatchingPosition() {}
 
                         const tickTimer = () => {
                             const el = $('takingTimeValue');
@@ -729,7 +796,7 @@
                                     state.trackingStart = state.trackingStart || Date.now();
                                     state.timerIntervalId = setInterval(tickTimer, 1000);
                                 }
-                                // Do NOT start GPS here — only the tab that pressed Start sends location.
+                                // Do NOT start GPS here for cross-tab sync — only the tab that pressed Start owns GPS.
                                 updateStatusMessage('Tracking Active — Location updates every 2 seconds', 'info');
 
                             } else if (!serverIsTracking && wasTracking) {
@@ -740,7 +807,7 @@
                                 clearInterval(state.timerIntervalId);
                                 state.timerIntervalId = null;
                                 state.trackingStart = null;
-                                if (isOwner) stopWatchingPosition();
+                                if (isOwner) { stopWatchingPosition(); stopSendInterval(); }
                                 updateStatusMessage('Offline — Press Start to begin tracking', 'warning');
 
                             } else if (firstLoad && serverIsTracking) {
@@ -793,29 +860,14 @@
                         }
 
                         function schedulePollStatus() {
-                            const interval = state.tracking ? 2000 : 5000;
+                            // While tracking: poll every 10 s (only need to detect
+                            // stop from another tab — doTick handles the real work).
+                            // While stopped: poll every 5 s to detect start quickly.
+                            const interval = state.tracking ? 10000 : 5000;
                             setTimeout(async () => { await pollStatus(); schedulePollStatus(); }, interval);
                         }
 
-                        // ── Heartbeat: keep last_seen fresh when GPS hasn't moved ──
-                        // Fires every 30s while tracking. If GPS watchPosition hasn't
-                        // sent a new fix (background tab, stationary user), this stops
-                        // the server from flipping the tracker to idle/offline.
-                        async function sendHeartbeat() {
-                            if (!state.tracking || !isOwner) return;
-                            if (state.lastLat === null) return;  // No fix yet
-                            try {
-                                await postJson('/salesperson_tracking/update', {
-                                    latitude: state.lastLat,
-                                    longitude: state.lastLng,
-                                    accuracy: 0,
-                                    distance: state.totalDistance,
-                                    tracker_id: trackerId,
-                                });
-                                log('Heartbeat sent lat=%.6f lng=%.6f', state.lastLat, state.lastLng);
-                            } catch(e) { warn('Heartbeat error:', e); }
-                        }
-                        setInterval(sendHeartbeat, 30000);
+                        // Heartbeat replaced by sendTick (runs every 2 s)
 
                         // ── Start button ──────────────────────────────────────
                         const startTracking = async () => {
@@ -831,6 +883,9 @@
                                 log('startTracking: server responded ok, already_active=%s', result.already_active);
                                 state.trackingStart = Date.now();
                                 applyServerState(true, false);
+                                // This tab pressed Start — it owns GPS sending
+                                startWatchingPosition();
+                                startSendInterval();
                             } catch(e) {
                                 err('startTracking error:', e);
                                 setStartBtn(false);
@@ -848,6 +903,7 @@
                                 await postJson('/salesperson_tracking/stop', { tracker_id: trackerId });
                                 log('stopTracking: server responded ok');
                                 stopWatchingPosition();
+                                stopSendInterval();
                                 clearInterval(state.timerIntervalId);
                                 state.timerIntervalId = null;
                                 state.trackingStart = null;

@@ -442,6 +442,36 @@ class SalespersonTrackingController(http.Controller):
 
     # ── JSON API ──────────────────────────────────────────────────────────────
 
+    @http.route("/salesperson_tracking/geocode", type="http", auth="user", methods=["POST"], csrf=False)
+    def geocode_location(self, **kwargs):
+        """Reverse-geocode a lat/lng and update the tracker location_name.
+        Called by the JS every ~30 s — completely separate from the 2-second
+        GPS log updates so geocoding never blocks log creation.
+        """
+        user = self._check_access()
+        payload = self._json_body()
+        try:
+            lat = float(payload["latitude"])
+            lng = float(payload["longitude"])
+        except (KeyError, ValueError):
+            return self._json_response({"ok": False})
+
+        tracker_id = payload.get("tracker_id")
+        if tracker_id:
+            tracker = request.env["salesperson.tracker"].sudo().browse(int(tracker_id))
+        else:
+            tracker = user._ensure_salesperson_tracker()
+
+        if not tracker or not tracker.exists():
+            return self._json_response({"ok": False})
+
+        name = tracker._reverse_geocode(lat, lng)
+        if name:
+            tracker.write({"location_name": name})
+            _logger.debug("geocode_location: tracker=%s → %r", tracker.id, name)
+
+        return self._json_response({"ok": True, "location_name": name or tracker.location_name or ""})
+
     @http.route("/salesperson_tracking/update", type="http", auth="user", methods=["POST"], csrf=False)
     def update_location(self, **kwargs):
         user = self._check_access()

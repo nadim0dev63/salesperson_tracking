@@ -173,17 +173,11 @@ class SalespersonTracker(models.Model):
         to *customer* partners and writing the salesperson's GPS position there
         corrupts the customer pins shown on the moving map.
 
-        Heartbeat pings (accuracy=0, same lat/lng as last) only refresh last_seen
-        and do NOT create a new location log entry, keeping the log clean.
+        Every call — whether the position changed or not — creates a new log entry.
+        The JS sends every 2 seconds, and each send must produce a row so the
+        moving-map path and log count are always up to date.
         """
         self.ensure_one()
-        # Detect heartbeat: accuracy=0 and position hasn't changed
-        is_heartbeat = (
-            accuracy == 0
-            and self.last_latitude is not None
-            and abs(float(self.last_latitude) - float(latitude)) < 0.000001
-            and abs(float(self.last_longitude) - float(longitude)) < 0.000001
-        )
         _logger.debug(
             "update_live_location: tracker=%s user=%s lat=%.6f lng=%.6f accuracy=%s source=%s retry=%s",
             self.id, self.user_id.name, latitude, longitude, accuracy, source, retry_count,
@@ -191,23 +185,18 @@ class SalespersonTracker(models.Model):
 
         try:
             # Invalidate the ORM cache so the next field read hits the DB.
-            # self.refresh() does not exist in Odoo 17+; use invalidate_recordset().
             self.invalidate_recordset()
 
             now = fields.Datetime.now()
 
-            # Heartbeat ping: just refresh last_seen, skip geocode + log creation
-            if is_heartbeat:
-                self.write({"is_tracking": True, "last_seen": now})
-                _logger.debug("update_live_location: heartbeat refresh only for tracker=%s", self.id)
-                return
+            # ── Location name: NEVER call _reverse_geocode here ──────────────
+            # Geocoding makes a blocking HTTP request (up to 5 s timeout) which
+            # holds the DB transaction open and causes serialization failures that
+            # silently drop every log entry. Reuse the last known name; the JS
+            # calls /salesperson_tracking/geocode separately (throttled, async).
+            location_name = self.location_name or ""
 
-            # Resolve location name (may make an HTTP call; do it before the write
-            # so we don't hold a long-running transaction open unnecessarily)
-            location_name = self._reverse_geocode(latitude, longitude) or self.location_name
-            _logger.debug("update_live_location: resolved location_name=%r", location_name)
-
-            # 1. Update tracker fields
+            # 1. Update tracker — fast, no HTTP calls
             self.write({
                 "is_tracking": True,
                 "last_seen": now,
@@ -217,14 +206,9 @@ class SalespersonTracker(models.Model):
                 "total_distance_km": self.total_distance_km + (distance or 0.0),
                 "location_name": location_name,
             })
-            _logger.debug("update_live_location: tracker record updated ok")
+            _logger.debug("update_live_location: tracker updated ok")
 
-            # NOTE: We deliberately skip writing partner_latitude/partner_longitude
-            # on self.user_id.partner_id.  Those coordinates are used for *customer*
-            # pins on the moving map; overwriting them with the salesperson's live
-            # GPS position corrupts customer marker placement.
-
-            # 2. Append location log entry
+            # 2. Append location log entry — always, every call
             log_vals = {
                 "tracker_id": self.id,
                 "tracked_at": now,
@@ -235,7 +219,7 @@ class SalespersonTracker(models.Model):
                 "location_name": location_name,
             }
             log = self.env["salesperson.location.log"].sudo().create(log_vals)
-            _logger.debug("update_live_location: location log created id=%s", log.id)
+            _logger.debug("update_live_location: log created id=%s", log.id)
 
             # 3. Geofence auto check-in / check-out
             try:
