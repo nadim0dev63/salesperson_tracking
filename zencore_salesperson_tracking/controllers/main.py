@@ -37,29 +37,15 @@ class SalespersonTrackingController(http.Controller):
         user = request.env.user
         if user._is_public():
             raise AccessError(_("Please log in to access tracking."))
-
-        # Administrators (base.group_system) always have access regardless of
-        # the salesperson_role field — they may never have had it set manually.
-        is_admin = user.has_group('base.group_system')
-        if not is_admin:
-            if not hasattr(user, 'salesperson_role') or user.salesperson_role not in ("manager", "salesman"):
-                raise AccessError(_("Only salespersons and managers can access tracking."))
-
+        if not hasattr(user, 'salesperson_role') or user.salesperson_role not in ("manager", "salesman"):
+            raise AccessError(_("Only salespersons and managers can access tracking."))
+        
+        # Ensure the user has the tracker method
+        if not hasattr(user, '_ensure_salesperson_tracker'):
+            # Monkey patch if needed (better to add to res.users via inheritance)
+            pass
+        
         return user
-
-    def _is_manager(self, user):
-        """Return True if the user should be treated as a manager.
-
-        Any one of these is sufficient:
-          - Odoo Administrator  (base.group_system)           → always manager
-          - Member of module's manager security group         → manager
-          - salesperson_role field set to 'manager'           → manager
-        """
-        if user.has_group('base.group_system'):
-            return True
-        if user.has_group('zencore_salesperson_tracking.group_salesperson_manager'):
-            return True
-        return getattr(user, 'salesperson_role', '') == 'manager'
     def _user_tz(self, user):
         """Return user's timezone name, falling back to UTC."""
         try:
@@ -108,30 +94,8 @@ class SalespersonTrackingController(http.Controller):
             if not tracker.exists():
                 return request.not_found()
         else:
-            # No tracker_id supplied → open the current user's own tracker.
-            # IMPORTANT: Do NOT call user.sudo()._ensure_salesperson_tracker() —
-            # sudo() on a recordset changes `self` to superuser (id=1), so the
-            # tracker would be created for OdooBot, not the logged-in user.
-            # Instead, run the search/create via sudo on the *model*, passing the
-            # real user.id explicitly, so ACL restrictions are bypassed safely.
-            tracker = request.env["salesperson.tracker"].sudo().search([
-                ("user_id", "=", user.id),
-                ("visit_date", "=", fields.Date.today()),
-            ], limit=1)
-            if not tracker:
-                tracker = request.env["salesperson.tracker"].sudo().create({
-                    "user_id": user.id,
-                    "visit_date": fields.Date.today(),
-                    "state": "planned",
-                })
-                # Link a visit plan for today if one exists
-                plan = request.env["salesperson.visit.plan"].sudo().search([
-                    ("user_id", "=", user.id),
-                    ("planned_date", "=", fields.Date.today()),
-                ], limit=1)
-                if plan:
-                    tracker.plan_id = plan.id
-                    tracker.action_load_target_lines()
+            # No tracker_id in URL — always the user's own page
+            tracker = user._ensure_salesperson_tracker()
 
         today = fields.Date.today()
         today_start = fields.Datetime.to_datetime(today)
@@ -146,17 +110,6 @@ class SalespersonTrackingController(http.Controller):
         tz_name = self._user_tz(user)
         last_seen_display = _localize_dt(tracker.last_seen, tz_name) if tracker.last_seen else 'Not tracked'
 
-        # is_owner=True  → Start/Stop/Camera buttons are shown (user controls their own tracking)
-        # is_owner=False → Read-only badge shown (viewing someone else's tracker)
-        #
-        # The tracker belongs to this user when:
-        #   - No tracker_id was supplied (resolved to user's own tracker above), OR
-        #   - tracker_id was supplied and the tracker's user_id matches the logged-in user
-        #
-        # A Manager opening a *salesperson's* tracker via ?tracker_id=X gets
-        # is_owner=False intentionally — read-only view is correct there.
-        is_owner = tracker.user_id.id == user.id
-
         values = {
             "tracker": tracker,
             "user": user,
@@ -165,8 +118,18 @@ class SalespersonTrackingController(http.Controller):
             "today_visited_count": tracker.total_visited,
             "today_rate": int(tracker.total_visited * 100 / tracker.total_visits) if tracker.total_visits else 0,
             "last_seen_display": last_seen_display,
-            "is_owner": is_owner,
+            # is_owner: True  → show Start/Stop buttons (this is YOUR tracker)
+            #           False → show read-only badge (viewing someone else's tracker)
+            # Compare raw integer IDs — sudo() on tracker does not change field values.
+            "is_owner": int(tracker.user_id.id) == int(user.id),
         }
+        _logger.info(
+            "live_tracking_page: uid=%s(%s) tracker=%s tracker_uid=%s(%s) is_owner=%s url_tracker_id=%s",
+            user.id, user.name,
+            tracker.id,
+            tracker.user_id.id, tracker.user_id.name,
+            values["is_owner"], tracker_id,
+        )
         return request.render("zencore_salesperson_tracking.live_tracking_page", values)
 
     @http.route("/salesperson_tracking/moving_map/<int:tracker_id>", type="http", auth="user", website=False)
@@ -332,7 +295,7 @@ class SalespersonTrackingController(http.Controller):
         """Fix #5: Dashboard page."""
         user = self._check_access()
         tz_name = self._user_tz(user)
-        is_manager = self._is_manager(user)
+        is_manager = getattr(user, 'salesperson_role', '') == 'manager'
 
         today = fields.Date.today()
         today_start = fields.Datetime.to_datetime(today)

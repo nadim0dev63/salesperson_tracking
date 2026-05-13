@@ -538,10 +538,12 @@
                                 attribution: '', maxZoom: 19,
                             }).addTo(liveMap);
 
-                            // Detect manual pan / zoom → disable auto-follow
-                            liveMap.on('dragstart zoomstart', () => {
+                            // Detect ANY manual interaction → permanently disable auto-follow.
+                            // 'zoomstart' catches pinch-zoom on mobile.
+                            // 'dragstart' catches panning.
+                            // 'zoom' catches scroll-wheel zoom on desktop.
+                            liveMap.on('dragstart zoomstart zoom', () => {
                                 state.userMovedMap = true;
-                                log('User moved map — auto-pan disabled');
                             });
                             state.mapInitialised = true;
                             log('Map initialised');
@@ -1295,16 +1297,22 @@
 
                         updateStats(pts);
 
-                        // Fit bounds: path + all customer pins
-                        const custLL = customers.filter(c => c.lat && c.lng).map(c => [c.lat, c.lng]);
-                        const allBounds = [...allLatLngs, ...custLL];
-                        if (allBounds.length === 1) {
-                            map.setView(allBounds[0], 16);
-                        } else if (allBounds.length > 1) {
-                            map.fitBounds(L.latLngBounds(allBounds), { padding: [50, 50] });
+                        // Fit bounds only on the FIRST render (initialFitDone=false).
+                        // After that, never move the map — the user controls zoom/pan freely.
+                        if (!renderPath.initialFitDone) {
+                            const custLL = customers.filter(c => c.lat && c.lng).map(c => [c.lat, c.lng]);
+                            const allBounds = [...allLatLngs, ...custLL];
+                            if (allBounds.length === 1) {
+                                map.setView(allBounds[0], 16);
+                            } else if (allBounds.length > 1) {
+                                map.fitBounds(L.latLngBounds(allBounds), { padding: [50, 50] });
+                            }
+                            renderPath.initialFitDone = true;
+                            log('renderPath: initial fitBounds done — auto-zoom disabled for subsequent polls');
                         }
                         setTimeout(() => map.invalidateSize(), 200);
                     }
+                    renderPath.initialFitDone = false;   // reset on page load
 
                     // ── Fix 3: Customer pins — correct colors ─────────────────
                     // visited  → dark green #15803d

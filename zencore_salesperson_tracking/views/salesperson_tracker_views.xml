@@ -211,19 +211,38 @@
                              onclick="event.stopPropagation()">
 
                             <!-- Live Page: visible for everyone, opens the card owner's tracker -->
-                            <a t-attf-href="/salesperson_tracking/live?tracker_id=#{record.id.raw_value}"
-                               target="_blank"
-                               style="flex:1;display:inline-flex;align-items:center;justify-content:center;
-                                      gap:5px;padding:7px 10px;border-radius:8px;font-size:11px;font-weight:600;
-                                      background:linear-gradient(135deg,#2563EB,#4F46E5);
-                                      color:#fff;text-decoration:none;">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;">
-                                    <circle cx="12" cy="12" r="2"/>
-                                    <path d="M16.24 7.76a6 6 0 0 1 0 8.49"/>
-                                    <path d="M7.76 7.76a6 6 0 0 0 0 8.49"/>
-                                </svg>
-                                Live Page
-                            </a>
+                            <!-- Own card → /live (no tracker_id) → is_owner=True → buttons show.
+                                 Other card → /live?tracker_id=X → is_owner=False → read-only. -->
+                            <t t-if="record.user_id.raw_value == uid">
+                                <a href="/salesperson_tracking/live"
+                                   target="_blank"
+                                   style="flex:1;display:inline-flex;align-items:center;justify-content:center;
+                                          gap:5px;padding:7px 10px;border-radius:8px;font-size:11px;font-weight:600;
+                                          background:linear-gradient(135deg,#2563EB,#4F46E5);
+                                          color:#fff;text-decoration:none;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;">
+                                        <circle cx="12" cy="12" r="2"/>
+                                        <path d="M16.24 7.76a6 6 0 0 1 0 8.49"/>
+                                        <path d="M7.76 7.76a6 6 0 0 0 0 8.49"/>
+                                    </svg>
+                                    Live Page
+                                </a>
+                            </t>
+                            <t t-else="">
+                                <a t-attf-href="/salesperson_tracking/live?tracker_id=#{record.id.raw_value}"
+                                   target="_blank"
+                                   style="flex:1;display:inline-flex;align-items:center;justify-content:center;
+                                          gap:5px;padding:7px 10px;border-radius:8px;font-size:11px;font-weight:600;
+                                          background:linear-gradient(135deg,#2563EB,#4F46E5);
+                                          color:#fff;text-decoration:none;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;">
+                                        <circle cx="12" cy="12" r="2"/>
+                                        <path d="M16.24 7.76a6 6 0 0 1 0 8.49"/>
+                                        <path d="M7.76 7.76a6 6 0 0 0 0 8.49"/>
+                                    </svg>
+                                    Live Page
+                                </a>
+                            </t>
 
                             <!-- Map: always visible -->
                             <a t-attf-href="/salesperson_tracking/moving_map/#{record.id.raw_value}"
