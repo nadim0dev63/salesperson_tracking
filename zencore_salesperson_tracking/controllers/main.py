@@ -53,13 +53,8 @@ class SalespersonTrackingController(http.Controller):
             raise AccessError(_("Please log in to access tracking."))
         if not hasattr(user, 'salesperson_role') or user.salesperson_role not in ("manager", "salesman"):
             raise AccessError(_("Only salespersons and managers can access tracking."))
-        
-        # Ensure the user has the tracker method
-        if not hasattr(user, '_ensure_salesperson_tracker'):
-            # Monkey patch if needed (better to add to res.users via inheritance)
-            pass
-        
         return user
+    
     def _user_tz(self, user):
         """Return user's timezone name, falling back to UTC."""
         try:
@@ -107,7 +102,7 @@ class SalespersonTrackingController(http.Controller):
         This guarantees is_owner=True for every user who opens their own /live page.
         """
         user = self._check_access()
-        tracker = user._ensure_salesperson_tracker()
+        tracker = request.env['res.users'].sudo().browse(user.id)._ensure_salesperson_tracker()
 
         today = fields.Date.today()
         today_start = fields.Datetime.to_datetime(today)
