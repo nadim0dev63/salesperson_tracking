@@ -104,9 +104,15 @@ class SalespersonTrackingController(http.Controller):
         ], order="tracked_at asc")
         total_distance = self._compute_total_distance(logs)
 
-        # Fix #8: Localize last_seen for display
         tz_name = self._user_tz(user)
         last_seen_display = _localize_dt(tracker.last_seen, tz_name) if tracker.last_seen else 'Not tracked'
+
+        # Compute last_seen Unix timestamp safely in Python (not in QWeb template)
+        try:
+            import calendar
+            last_seen_ts = calendar.timegm(tracker.last_seen.timetuple()) if tracker.last_seen else 0
+        except Exception:
+            last_seen_ts = 0
 
         values = {
             "tracker": tracker,
@@ -116,7 +122,7 @@ class SalespersonTrackingController(http.Controller):
             "today_visited_count": tracker.total_visited,
             "today_rate": int(tracker.total_visited * 100 / tracker.total_visits) if tracker.total_visits else 0,
             "last_seen_display": last_seen_display,
-            # /live is always the current user's own page → is_owner always True
+            "last_seen_ts": last_seen_ts,
             "is_owner": True,
         }
         _logger.info(

@@ -361,7 +361,7 @@
                      t-att-data-distance="'%.1f' % total_distance_km" 
                      t-att-data-is-tracking="'1' if tracker.is_tracking else '0'"
                      t-att-data-is-owner="'1' if is_owner else '0'"
-                     t-att-data-last-seen-ts="int(tracker.last_seen.timestamp()) if tracker.last_seen else 0"
+                     t-att-data-last-seen-ts="last_seen_ts"
                      style="display:none"/>
 
                 <div class="tracking-container">
