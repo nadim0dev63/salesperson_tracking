@@ -649,8 +649,8 @@
 
                         const GEO_OPTS_TICK = {
                             enableHighAccuracy: true,
-                            timeout: 4000,       // must finish before next 2 s tick
-                            maximumAge: 0,       // ALWAYS fresh — never cached
+                            timeout: 8000,       // 8s for slow mobile GPS
+                            maximumAge: 2000,    // accept fix up to 2s old
                         };
 
                         let sendIntervalId  = null;
@@ -712,8 +712,9 @@
                                         err('doTick POST error (%d/5): %s', state.consecutiveErrors, e.message);
                                         updateStatusMessage('Update error: ' + e.message, 'error');
                                         if (state.consecutiveErrors >= 5) {
-                                            warn('5 consecutive errors — stopping');
-                                            stopSendInterval();
+                                            warn('5 errors — reloading in 3s');
+                                            updateStatusMessage('Connection error — reloading…', 'error');
+                                            setTimeout(() => location.reload(), 3000);
                                         }
                                     } finally {
                                         tickBusy = false;
@@ -1386,6 +1387,7 @@
                         } catch(e) {
                             pollErrors++;
                             err('pollMap error (consecutive=%d):', pollErrors, e);
+                            if (pollErrors >= 5) { setTimeout(() => location.reload(), 3000); }
                         }
                     }
 
