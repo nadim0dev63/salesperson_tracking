@@ -525,19 +525,19 @@ class SalespersonTrackingController(http.Controller):
                 "tracker_id": tracker.id,
             })
 
-        today_start = fields.Datetime.to_datetime(date.today())
-        logs = request.env["salesperson.location.log"].sudo().search([
-            ("tracker_id", "=", tracker.id),
-            ("tracked_at", ">=", today_start),
-        ], order="tracked_at asc")
-        total_distance = self._compute_total_distance(logs)
+        # Use the tracker's pre-computed running total — already updated by
+        # update_live_location() above. Avoids a full log table scan + haversine
+        # recompute on every tick that grows O(N) with session length and causes
+        # Odoo worker timeouts after ~30 minutes of continuous tracking.
+        tracker.invalidate_recordset()
+        total_distance = round(tracker.total_distance_km or 0.0, 3)
 
         tz_name = self._user_tz(user)
         last_seen_local = _localize_dt(tracker.last_seen, tz_name)
 
         _logger.debug(
-            "update_location: returning ok=True tracker=%s status=%s total_logs=%d distance=%.3f",
-            tracker.id, tracker.tracking_status, len(logs), total_distance,
+            "update_location: returning ok=True tracker=%s status=%s distance=%.3f",
+            tracker.id, tracker.tracking_status, total_distance,
         )
 
         return self._json_response({

@@ -270,8 +270,27 @@ class SalespersonTracker(models.Model):
             "zencore_salesperson_tracking.geofence_radius", "100"
         ))
     
+    # In-memory debounce: tracker_id → last geofence check (epoch seconds).
+    # Stored at class level so it survives across method calls within one
+    # Odoo worker process.  Each worker has its own dict — that is fine.
+    _geofence_last_checked = {}
+    _GEOFENCE_INTERVAL = 10  # seconds between geofence evaluations
+
     def _check_geofence(self, latitude, longitude):
-        """Auto check-in/out based on 100m radius from customers."""
+        """Auto check-in/out based on 100m radius from customers.
+
+        Debounced to run at most every _GEOFENCE_INTERVAL seconds so it does
+        not execute on every 2-second GPS tick.  Customers are fetched in a
+        single query to avoid the N+1 ORM cascade that caused DB connection
+        exhaustion and transaction rollbacks during continuous tracking.
+        """
+        import time as _time
+        now_ts = _time.monotonic()
+        last = self.__class__._geofence_last_checked.get(self.id, 0)
+        if now_ts - last < self.__class__._GEOFENCE_INTERVAL:
+            return  # skip — checked recently enough
+        self.__class__._geofence_last_checked[self.id] = now_ts
+
         def haversine(lat1, lon1, lat2, lon2):
             R = 6371000
             dlat = math.radians(lat2 - lat1)
@@ -280,10 +299,22 @@ class SalespersonTracker(models.Model):
                 math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
             return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-        # Get all target customers from plan
-        customers = self.env["res.partner"]
-        for line in self.plan_id.target_line_ids:
-            customers |= line.customer_ids
+        # Fetch all target customers in ONE query instead of N+1 ORM loads.
+        if not self.plan_id:
+            return
+        lines = self.env["salesperson.visit.plan.line"].search([
+            ("plan_id", "=", self.plan_id.id),
+        ])
+        if not lines:
+            return
+        # Collect all customer ids from all lines in one go (ORM pre-fetches
+        # the m2m in a single query when we access customer_ids on a recordset).
+        partner_ids = lines.mapped("customer_ids").filtered(
+            lambda p: p.partner_latitude and p.partner_longitude
+        ).ids
+        if not partner_ids:
+            return
+        customers = self.env["res.partner"].browse(partner_ids)
 
         # Find nearest customer
         nearest_customer = None
