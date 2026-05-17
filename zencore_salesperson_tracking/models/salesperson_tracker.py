@@ -165,8 +165,8 @@ class SalespersonTracker(models.Model):
             return []
         return mapping[value]
 
-    def update_live_location(self, latitude, longitude, accuracy=None, source="browser", distance=0.0, retry_count=0):
-        """Update live location with retry logic for serialization failures.
+    def update_live_location(self, latitude, longitude, accuracy=None, source="browser", distance=0.0):
+        """Record a live GPS position.
 
         IMPORTANT: We intentionally do NOT write salesperson coordinates to
         res.partner.partner_latitude / partner_longitude.  Those fields belong
@@ -176,11 +176,17 @@ class SalespersonTracker(models.Model):
         Every call — whether the position changed or not — creates a new log entry.
         The JS sends every 2 seconds, and each send must produce a row so the
         moving-map path and log count are always up to date.
+
+        Transaction safety: we use raw SQL for the UPDATE and INSERT to avoid
+        ORM recomputes and lock contention.  We do NOT call cr.rollback() —
+        Odoo's service_model.retrying() wrapper handles that at the HTTP layer.
+        The geofence check runs inside a SAVEPOINT so its failures cannot
+        corrupt the cursor and roll back the position data we already wrote.
         """
         self.ensure_one()
         _logger.debug(
-            "update_live_location: tracker=%s user=%s lat=%.6f lng=%.6f accuracy=%s source=%s retry=%s",
-            self.id, self.user_id.name, latitude, longitude, accuracy, source, retry_count,
+            "update_live_location: tracker=%s user=%s lat=%.6f lng=%.6f accuracy=%s source=%s",
+            self.id, self.user_id.name, latitude, longitude, accuracy, source,
         )
 
         try:
@@ -255,18 +261,19 @@ class SalespersonTracker(models.Model):
             _logger.debug("update_live_location: log created id=%s (SQL)", log_id)
 
             # ── 3. Geofence — debounced, runs at most every 10 s ─────────────
+            # Run inside a SAVEPOINT so any failure (ORM constraint, checkin
+            # create error, etc.) cannot corrupt the cursor state and roll back
+            # the tracker UPDATE + log INSERT we already executed above.
             try:
+                self.env.cr.execute("SAVEPOINT geofence_check")
                 self._check_geofence(latitude, longitude)
+                self.env.cr.execute("RELEASE SAVEPOINT geofence_check")
             except Exception as gf_err:
+                self.env.cr.execute("ROLLBACK TO SAVEPOINT geofence_check")
                 _logger.warning(
-                    "update_live_location: geofence check failed for tracker %s: %s",
+                    "update_live_location: geofence check failed for tracker %s (savepoint rolled back): %s",
                     self.id, gf_err, exc_info=True,
                 )
-
-            # ── 4. Session position — skip on every tick to avoid lock contention.
-            # The session row is updated by action_stop_tracking when the session
-            # ends; updating it every 2 s adds a second row lock per tick with no
-            # meaningful benefit (the session's last_location is only read on stop).
 
             _logger.info(
                 "update_live_location: SUCCESS tracker=%s user=%s lat=%.6f lng=%.6f log_id=%s",
@@ -274,23 +281,14 @@ class SalespersonTracker(models.Model):
             )
 
         except Exception as e:
+            # Do NOT call cr.rollback() here — Odoo's service_model.retrying()
+            # wrapper already handles transaction rollback and retry at the HTTP
+            # layer.  Calling rollback() inside the model method invalidates the
+            # cursor and causes double-rollback errors that kill the worker.
             _logger.error(
-                "update_live_location: FAILED tracker=%s retry=%s error=%s",
-                self.id, retry_count, e, exc_info=True,
+                "update_live_location: FAILED tracker=%s error=%s",
+                self.id, e, exc_info=True,
             )
-            self.env.cr.rollback()
-            if "could not serialize access" in str(e) and retry_count < 3:
-                import time
-                wait = 0.1 * (2 ** retry_count)
-                _logger.info(
-                    "update_live_location: serialization conflict, retrying in %.2fs (attempt %s/3)",
-                    wait, retry_count + 1,
-                )
-                time.sleep(wait)
-                self.invalidate_recordset()
-                return self.update_live_location(
-                    latitude, longitude, accuracy, source, distance, retry_count + 1
-                )
             raise
 
     @api.model
