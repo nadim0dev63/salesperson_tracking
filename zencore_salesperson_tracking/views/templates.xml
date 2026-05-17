@@ -655,6 +655,8 @@
 
                         let sendIntervalId  = null;
                         let tickBusy        = false;   // prevent overlapping ticks
+                        let tickBusyAt      = 0;       // timestamp when tickBusy was set
+                        const TICK_BUSY_TIMEOUT = 6000; // ms — force-release if GPS hangs
                         let geocodeIntervalId = null;
                         let lastGeocodeLat  = null;
                         let lastGeocodeLng  = null;
@@ -663,10 +665,20 @@
                         function doTick() {
                             if (!state.tracking || !isOwner) return;
                             if (tickBusy) {
-                                log('doTick: previous tick still running — skipping');
-                                return;
+                                // Bug fix: GPS can hang on Android without calling either
+                                // callback (known Chrome/WebView bug). If the busy lock
+                                // has been held for more than TICK_BUSY_TIMEOUT ms, force-
+                                // release it so the next tick can proceed normally.
+                                if (Date.now() - tickBusyAt > TICK_BUSY_TIMEOUT) {
+                                    warn('doTick: tickBusy watchdog fired — force-releasing stuck lock');
+                                    tickBusy = false;
+                                } else {
+                                    log('doTick: previous tick still running — skipping');
+                                    return;
+                                }
                             }
-                            tickBusy = true;
+                            tickBusy  = true;
+                            tickBusyAt = Date.now();
 
                             navigator.geolocation.getCurrentPosition(
                                 async function(pos) {
@@ -709,11 +721,17 @@
 
                                     } catch(e) {
                                         state.consecutiveErrors++;
-                                        err('doTick POST error (%d/5): %s', state.consecutiveErrors, e.message);
-                                        updateStatusMessage('Update error: ' + e.message, 'error');
-                                        if (state.consecutiveErrors >= 5) {
-                                            warn('5 consecutive errors — stopping');
-                                            stopSendInterval();
+                                        err('doTick POST error (%d): %s', state.consecutiveErrors, e.message);
+                                        updateStatusMessage('Update error: ' + e.message + ' — will retry', 'error');
+
+                                        // Bug fix: never permanently stop the interval on network errors.
+                                        // Transient failures (Odoo worker timeout, mobile network blip)
+                                        // must not kill tracking silently. Instead, reset consecutiveErrors
+                                        // after 10 failures so the counter never permanently blocks ticks.
+                                        if (state.consecutiveErrors >= 10) {
+                                            warn('doTick: %d consecutive errors — resetting counter and continuing', state.consecutiveErrors);
+                                            state.consecutiveErrors = 0;
+                                            updateStatusMessage('Network unstable — retrying…', 'error');
                                         }
                                     } finally {
                                         tickBusy = false;
