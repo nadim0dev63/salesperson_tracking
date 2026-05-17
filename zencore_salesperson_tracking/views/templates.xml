@@ -954,38 +954,72 @@
                         }
 
                         // ── Manager polling (live location view) ──────────────
+                        // Uses cursor-based incremental fetch (?after_id=N) so each
+                        // poll only loads NEW points — O(1) regardless of session length.
+                        // The loop is self-healing and never dies on errors.
+                        let managerLastId    = 0;
+                        let managerPollErrs  = 0;
+
                         const pollManagerView = async () => {
                             if (isOwner) return;
                             try {
-                                const res  = await fetch('/salesperson_tracking/moving_map_data/' + trackerId);
+                                const url  = '/salesperson_tracking/moving_map_data/' + trackerId
+                                           + (managerLastId ? '?after_id=' + managerLastId : '');
+                                const res  = await fetch(url);
+                                if (!res.ok) { managerPollErrs++; return; }
                                 const data = await res.json();
-                                if (!data.ok || !data.points || !data.points.length) return;
+                                if (!data.ok) return;
+                                managerPollErrs = 0;
+
+                                if ($('kpiDistance') && data.total_distance_km != null)
+                                    $('kpiDistance').textContent = parseFloat(data.total_distance_km).toFixed(1);
+
+                                const newPts = data.points || [];
+                                if (!newPts.length) return;
+
+                                // Advance cursor so next poll only fetches newer rows
+                                if (data.last_id && data.last_id > managerLastId)
+                                    managerLastId = data.last_id;
 
                                 if (!liveMap) initLiveMap();
-                                if (livePolyline) { liveMap.removeLayer(livePolyline); livePolyline = null; }
-                                if (liveMarker)   { liveMap.removeLayer(liveMarker);   liveMarker   = null; }
 
-                                livePath = data.points.map(p => [p.lat, p.lng]);
-                                if (livePath.length > 1)
-                                    livePolyline = L.polyline(livePath, { color: '#3b82f6', weight: 4 }).addTo(liveMap);
+                                // Append new points incrementally — no full redraw
+                                for (const p of newPts) {
+                                    livePath.push([p.lat, p.lng]);
+                                    if (livePolyline) {
+                                        livePolyline.addLatLng([p.lat, p.lng]);
+                                    } else {
+                                        livePolyline = L.polyline(livePath, { color: '#3b82f6', weight: 4 }).addTo(liveMap);
+                                    }
+                                }
 
-                                const last = data.points[data.points.length - 1];
-                                liveMarker = L.circleMarker([last.lat, last.lng], {
-                                    radius: 10, color: '#fff', fillColor: '#ef4444', fillOpacity: 1, weight: 3,
-                                }).bindTooltip(data.last_seen || '').addTo(liveMap);
+                                const last = newPts[newPts.length - 1];
+                                if (liveMarker) {
+                                    liveMarker.setLatLng([last.lat, last.lng]);
+                                } else {
+                                    liveMarker = L.circleMarker([last.lat, last.lng], {
+                                        radius: 10, color: '#fff', fillColor: '#ef4444', fillOpacity: 1, weight: 3,
+                                    }).bindTooltip(data.last_seen || '').addTo(liveMap);
+                                }
 
-                                // No auto-pan; manager controls their own view
                                 setTimeout(() => liveMap.invalidateSize(), 100);
 
                                 if ($('latitudeValue'))  $('latitudeValue').textContent  = parseFloat(last.lat).toFixed(6);
                                 if ($('longitudeValue')) $('longitudeValue').textContent = parseFloat(last.lng).toFixed(6);
-                                if ($('kpiDistance') && data.total_distance_km != null)
-                                    $('kpiDistance').textContent = parseFloat(data.total_distance_km).toFixed(1);
-                            } catch(e) { warn('pollManagerView error:', e); }
+                                if (data.last_seen && $('lastSeenValue')) $('lastSeenValue').textContent = data.last_seen;
+                            } catch(e) {
+                                managerPollErrs++;
+                                warn('pollManagerView error #' + managerPollErrs + ':', e);
+                            }
+                        };
+
+                        // Self-healing loop — always reschedules, backs off on errors
+                        const scheduleManagerPoll = () => {
+                            const delay = managerPollErrs > 5 ? 10000 : 3000;
+                            setTimeout(async () => { await pollManagerView(); scheduleManagerPoll(); }, delay);
                         };
 
                         // ── Boot ──────────────────────────────────────────────
-                        // /live is always the current user's own page → isOwner always true.
                         const serverIsTracking = root.dataset.isTracking === '1';
                         const lastSeenTs       = parseInt(root.dataset.lastSeenTs || '0', 10);
                         log('Boot: isOwner=%s trackerId=%s serverIsTracking=%s lastSeenTs=%s',
@@ -1004,9 +1038,6 @@
                         if (closeCameraBtn) closeCameraBtn.addEventListener('click', closeCamera);
 
                         // ── Stale-session reset ───────────────────────────────
-                        // If the tracker is marked active but last_seen is >10 min ago,
-                        // the previous session crashed without stopping. Auto-reset it
-                        // so this page load starts clean (not "already tracking").
                         const STALE_MS = 10 * 60 * 1000;
                         const isStale  = serverIsTracking && lastSeenTs > 0
                                       && (Date.now() - lastSeenTs * 1000) > STALE_MS;
@@ -1016,12 +1047,16 @@
                                 .catch(e => warn('stale stop error:', e));
                             applyServerState(false, true);
                         } else {
-                            // NEVER auto-start GPS — only start when user clicks Start.
                             applyServerState(serverIsTracking, true);
                         }
 
                         // Cross-tab sync polling
                         schedulePollStatus();
+
+                        // Manager view: start incremental map polling
+                        if (!isOwner) {
+                            pollManagerView().then(scheduleManagerPoll);
+                        }
                     })();
                 ]]>
                 </script>
