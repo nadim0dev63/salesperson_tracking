@@ -10,20 +10,6 @@ from odoo.http import request
 import logging
 _logger = logging.getLogger(__name__)
 
-
-def _safe_float(val, default=0.0):
-    """Odoo Float fields return False when NULL — convert to plain Python float."""
-    try:
-        return float(val) if val not in (False, None) else default
-    except (TypeError, ValueError):
-        return default
-
-
-def _safe_str(val, default=""):
-    """Odoo Char/Text fields return False when NULL — convert to plain str."""
-    return str(val) if val not in (False, None) else default
-
-
 def _localize_dt(dt, tz_name=None):
     """Convert naive UTC datetime → localized string for display. Fix #8."""
     if not dt:
@@ -53,8 +39,13 @@ class SalespersonTrackingController(http.Controller):
             raise AccessError(_("Please log in to access tracking."))
         if not hasattr(user, 'salesperson_role') or user.salesperson_role not in ("manager", "salesman"):
             raise AccessError(_("Only salespersons and managers can access tracking."))
+        
+        # Ensure the user has the tracker method
+        if not hasattr(user, '_ensure_salesperson_tracker'):
+            # Monkey patch if needed (better to add to res.users via inheritance)
+            pass
+        
         return user
-    
     def _user_tz(self, user):
         """Return user's timezone name, falling back to UTC."""
         try:
@@ -102,7 +93,7 @@ class SalespersonTrackingController(http.Controller):
         This guarantees is_owner=True for every user who opens their own /live page.
         """
         user = self._check_access()
-        tracker = request.env['res.users'].sudo().browse(user.id)._ensure_salesperson_tracker()
+        tracker = user._ensure_salesperson_tracker()
 
         today = fields.Date.today()
         today_start = fields.Datetime.to_datetime(today)
@@ -113,15 +104,9 @@ class SalespersonTrackingController(http.Controller):
         ], order="tracked_at asc")
         total_distance = self._compute_total_distance(logs)
 
+        # Fix #8: Localize last_seen for display
         tz_name = self._user_tz(user)
         last_seen_display = _localize_dt(tracker.last_seen, tz_name) if tracker.last_seen else 'Not tracked'
-
-        # Compute last_seen Unix timestamp safely in Python (not in QWeb template)
-        try:
-            import calendar
-            last_seen_ts = calendar.timegm(tracker.last_seen.timetuple()) if tracker.last_seen else 0
-        except Exception:
-            last_seen_ts = 0
 
         values = {
             "tracker": tracker,
@@ -131,7 +116,7 @@ class SalespersonTrackingController(http.Controller):
             "today_visited_count": tracker.total_visited,
             "today_rate": int(tracker.total_visited * 100 / tracker.total_visits) if tracker.total_visits else 0,
             "last_seen_display": last_seen_display,
-            "last_seen_ts": last_seen_ts,
+            # /live is always the current user's own page → is_owner always True
             "is_owner": True,
         }
         _logger.info(
@@ -176,11 +161,11 @@ class SalespersonTrackingController(http.Controller):
         for log in logs:
             if log.latitude and log.longitude:
                 points.append({
-                    "lat": _safe_float(log.latitude),
-                    "lng": _safe_float(log.longitude),
-                    "accuracy": _safe_float(log.accuracy),
-                    "time": _safe_str(_localize_dt(log.tracked_at, tz_name)),
-                    "location_name": _safe_str(log.location_name),
+                    "lat": log.latitude,
+                    "lng": log.longitude,
+                    "accuracy": log.accuracy,
+                    "time": _localize_dt(log.tracked_at, tz_name),
+                    "location_name": log.location_name or "",
                 })
             else:
                 skipped += 1
@@ -200,11 +185,11 @@ class SalespersonTrackingController(http.Controller):
                 tracker.last_latitude, tracker.last_longitude,
             )
             points.append({
-                "lat": _safe_float(tracker.last_latitude),
-                "lng": _safe_float(tracker.last_longitude),
-                "accuracy": _safe_float(tracker.last_accuracy),
-                "time": _safe_str(_localize_dt(tracker.last_seen, tz_name)),
-                "location_name": _safe_str(tracker.location_name) or "Last known position",
+                "lat": tracker.last_latitude,
+                "lng": tracker.last_longitude,
+                "accuracy": tracker.last_accuracy,
+                "time": _localize_dt(tracker.last_seen, tz_name),
+                "location_name": tracker.location_name or "Last known position",
             })
         elif not points:
             _logger.warning(
@@ -294,14 +279,7 @@ class SalespersonTrackingController(http.Controller):
             "last_known_lat": tracker.last_latitude or 0,
             "last_known_lng": tracker.last_longitude or 0,
         }
-        try:
-            return request.render("zencore_salesperson_tracking.moving_map_page", values)
-        except Exception as e:
-            _logger.error("moving_map render error tracker_id=%s: %s", tracker_id, e, exc_info=True)
-            return request.make_response(
-                "<h2>Map load error</h2><p>%s</p><a href='/web'>Back to Odoo</a>" % e,
-                headers=[("Content-Type", "text/html")]
-            )
+        return request.render("zencore_salesperson_tracking.moving_map_page", values)
 
     # ── Dashboard ─────────────────────────────────────────────────────────────
 
@@ -596,11 +574,11 @@ class SalespersonTrackingController(http.Controller):
         for log in logs:
             if log.latitude and log.longitude:
                 points.append({
-                    "lat": _safe_float(log.latitude),
-                    "lng": _safe_float(log.longitude),
-                    "time": _safe_str(_localize_dt(log.tracked_at, tz_name)),
-                    "accuracy": _safe_float(log.accuracy),
-                    "location_name": _safe_str(log.location_name),
+                    "lat": log.latitude,
+                    "lng": log.longitude,
+                    "time": _localize_dt(log.tracked_at, tz_name),
+                    "accuracy": log.accuracy,
+                    "location_name": log.location_name or "",
                 })
             else:
                 skipped += 1
@@ -618,11 +596,11 @@ class SalespersonTrackingController(http.Controller):
                 tracker_id, tracker.last_latitude, tracker.last_longitude,
             )
             points.append({
-                "lat": _safe_float(tracker.last_latitude),
-                "lng": _safe_float(tracker.last_longitude),
-                "time": _safe_str(_localize_dt(tracker.last_seen, tz_name) if tracker.last_seen else ""),
-                "accuracy": _safe_float(tracker.last_accuracy),
-                "location_name": _safe_str(tracker.location_name),
+                "lat": tracker.last_latitude,
+                "lng": tracker.last_longitude,
+                "time": _localize_dt(tracker.last_seen, tz_name) if tracker.last_seen else "",
+                "accuracy": tracker.last_accuracy,
+                "location_name": tracker.location_name or "",
             })
 
         total_dist = self._compute_total_distance(logs)

@@ -69,7 +69,7 @@ class ResUsers(models.Model):
         # Link a plan for today if one exists
         plan = self.env['salesperson.visit.plan'].search([
             ('user_id', '=', self.id),
-            ('planned_date', '=', today),
+            ('visit_date', '=', today),
         ], limit=1)
         if plan:
             tracker.plan_id = plan.id

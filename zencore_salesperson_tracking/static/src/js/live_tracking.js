@@ -122,13 +122,28 @@
         b.style.cursor  = disabled ? 'not-allowed' : 'pointer';
     };
 
-    // ── Error recovery (Fix #7) ───────────────────────────────────────────
+    // ── Error recovery ────────────────────────────────────────────────────
+    // Never reload the page — a reload stops GPS tracking silently.
+    // Instead we use exponential back-off: pause the send interval for a
+    // few seconds on repeated errors, then resume automatically.
     const handleError = msg => {
         state.consecutiveErrors++;
-        setNotice('Update Failed', `${msg} (${state.consecutiveErrors}/3)`, true);
-        if (state.consecutiveErrors >= 3) {
-            setNotice('Recovering…', 'Reloading page…', true);
-            setTimeout(() => location.reload(), 1500);
+        setNotice('Update Failed', `${msg} (${state.consecutiveErrors} consecutive)`, true);
+
+        const BACKOFF_AT    = [3, 6, 10];
+        const BACKOFF_SECS  = [5, 10, 30];
+        const idx = BACKOFF_AT.indexOf(state.consecutiveErrors);
+        if (idx !== -1) {
+            const secs = BACKOFF_SECS[idx];
+            setNotice('Retrying\u2026', `Pausing GPS for ${secs}s then resuming.`, true);
+            clearInterval(state.intervalId);
+            state.intervalId = null;
+            setTimeout(() => {
+                if (state.tracking) {
+                    state.intervalId = setInterval(fetchAndSend, 2000);
+                    setNotice('Tracking Active', 'Location updates every 2 seconds.');
+                }
+            }, secs * 1000);
         }
     };
 
@@ -200,7 +215,7 @@
         state.timerId    = setInterval(tickTimer, 1000);
         state.intervalId = setInterval(fetchAndSend, 2000);
         fetchAndSend();
-        try { await postJson('/salesperson_tracking/start', {}); } catch(e) {}
+        try { await postJson('/salesperson_tracking/start', { tracker_id: trackerId }); } catch(e) {}
         setNotice('Tracking Active', 'Location updates every 2 seconds.');
     };
 
@@ -216,7 +231,7 @@
         setStopBtn(true);
         updateStatus('offline', 'Offline');
         setNotice('Tracking Stopped', 'Location updates have been stopped.');
-        try { await postJson('/salesperson_tracking/stop', {}); } catch(e) {}
+        try { await postJson('/salesperson_tracking/stop', { tracker_id: trackerId }); } catch(e) {}
     };
 
     // ── Manager / viewer polling ──────────────────────────────────────────

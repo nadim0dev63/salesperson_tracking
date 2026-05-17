@@ -361,7 +361,7 @@
                      t-att-data-distance="'%.1f' % total_distance_km" 
                      t-att-data-is-tracking="'1' if tracker.is_tracking else '0'"
                      t-att-data-is-owner="'1' if is_owner else '0'"
-                     t-att-data-last-seen-ts="last_seen_ts"
+                     t-att-data-last-seen-ts="int(tracker.last_seen.timestamp()) if tracker.last_seen else 0"
                      style="display:none"/>
 
                 <div class="tracking-container">
@@ -649,8 +649,8 @@
 
                         const GEO_OPTS_TICK = {
                             enableHighAccuracy: true,
-                            timeout: 30000,       // 30s for slow mobile GPS
-                            maximumAge: 10000,    // accept fix up to 10s old
+                            timeout: 4000,       // must finish before next 2 s tick
+                            maximumAge: 0,       // ALWAYS fresh — never cached
                         };
 
                         let sendIntervalId  = null;
@@ -712,9 +712,8 @@
                                         err('doTick POST error (%d/5): %s', state.consecutiveErrors, e.message);
                                         updateStatusMessage('Update error: ' + e.message, 'error');
                                         if (state.consecutiveErrors >= 5) {
-                                            warn('5 errors — reloading in 3s');
-                                            updateStatusMessage('Connection error — reloading…', 'error');
-                                            setTimeout(() => location.reload(), 3000);
+                                            warn('5 consecutive errors — stopping');
+                                            stopSendInterval();
                                         }
                                     } finally {
                                         tickBusy = false;
@@ -1212,7 +1211,7 @@
                             const url = `https://router.project-osrm.org/route/v1/driving/`
                                       + `${fromPt.lng},${fromPt.lat};${toPt.lng},${toPt.lat}`
                                       + `?overview=full&geometries=geojson`;
-                            const res  = await fetch(url, { signal: AbortSignal.timeout(30000) });
+                            const res  = await fetch(url, { signal: AbortSignal.timeout(5000) });
                             const data = await res.json();
                             if (data.code === 'Ok' && data.routes?.[0]) {
                                 return data.routes[0].geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
@@ -1387,7 +1386,6 @@
                         } catch(e) {
                             pollErrors++;
                             err('pollMap error (consecutive=%d):', pollErrors, e);
-                            if (pollErrors >= 5) { setTimeout(() => location.reload(), 3000); }
                         }
                     }
 
