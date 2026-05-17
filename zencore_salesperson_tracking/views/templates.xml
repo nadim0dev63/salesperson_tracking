@@ -1376,14 +1376,22 @@
                     renderCustomers(customers);
                     renderPath(points, isLiveInit);
 
-                    // ── Fix 4: Live polling — incremental cursor-based fetch ────
-                    // After initial load we only fetch points with id > lastKnownId.
-                    // This keeps each poll O(1) regardless of how many total logs exist,
-                    // so tracking works correctly for 1 hour (1500 logs) or more.
-                    let lastKnownId   = points.length ? Math.max(...points.map(p => p.id || 0)) : 0;
+                    // ── Live polling — incremental cursor-based fetch ─────────
+                    // ?after_id=N → server returns only rows with id > N.
+                    // Each poll is O(1) regardless of total log count.
+                    // Self-healing: always reschedules even after errors.
+                    const ge = id => document.getElementById(id);   // safe $ for this scope
+
+                    let lastKnownId   = 0;
+                    let totalLogCount = points.length;               // running total for Logs badge
                     let currentStatus = initStatus;
                     let currentIsLive = isLiveInit;
                     let pollErrors    = 0;
+
+                    // Seed cursor from initial points (already rendered by renderPath)
+                    if (points.length) {
+                        lastKnownId = Math.max(...points.map(p => p.id || 0));
+                    }
 
                     async function pollMap() {
                         try {
@@ -1397,85 +1405,90 @@
 
                             const newIsLive = !!data.is_tracking;
                             const newStatus = newIsLive ? 'live' : 'offline';
+                            log('pollMap: status=%s new_pts=%d last_id=%d', newStatus, (data.points||[]).length, data.last_id);
 
-                            log('pollMap: status=%s new_points=%d last_id=%d', newStatus, data.points.length, data.last_id);
-
-                            const statusChanged = newStatus !== currentStatus;
-                            if (statusChanged) {
+                            // ── Status badge ──────────────────────────────────
+                            if (newStatus !== currentStatus) {
                                 currentStatus = newStatus;
                                 currentIsLive = newIsLive;
                                 updateStatus(newStatus, newIsLive ? 'Live' : 'Offline');
                             }
 
-                            if (data.total_distance_km != null && $('kpiDistance'))
-                                $('kpiDistance').textContent = parseFloat(data.total_distance_km).toFixed(1);
+                            // ── Distance — use server value (already computed) ─
+                            if (data.total_distance_km != null) {
+                                const dEl = ge('distanceVal');
+                                if (dEl) dEl.textContent = parseFloat(data.total_distance_km).toFixed(2) + ' km';
+                            }
+
+                            // ── Last seen ─────────────────────────────────────
+                            if (data.last_seen) {
+                                const lsEl = ge('lastSeenValue');
+                                if (lsEl) lsEl.textContent = data.last_seen;
+                            }
 
                             const newPts = data.points || [];
+                            if (!newPts.length) return;
 
-                            if (newPts.length > 0) {
-                                // Advance cursor
-                                if (data.last_id && data.last_id > lastKnownId)
-                                    lastKnownId = data.last_id;
+                            // ── Advance cursor ────────────────────────────────
+                            if (data.last_id && data.last_id > lastKnownId)
+                                lastKnownId = data.last_id;
 
-                                // Append new points to the live polyline without a full redraw
-                                for (const p of newPts) {
-                                    allLatLngs.push([p.lat, p.lng]);
-                                    if (trackPolylines.length > 0) {
-                                        trackPolylines[trackPolylines.length - 1].addLatLng([p.lat, p.lng]);
-                                    } else {
-                                        const poly = L.polyline([[p.lat, p.lng]], { color: '#3b82f6', weight: 4, opacity: 0.9 }).addTo(map);
-                                        trackPolylines.push(poly);
-                                    }
-                                }
-
-                                // Update the current-position marker in-place (no full redraw)
-                                const last = newPts[newPts.length - 1];
-                                const markerColor = newIsLive ? '#22c55e' : '#ef4444';
-                                const tipLabel    = newIsLive ? '● Live' : '● Last seen';
-                                const tooltip     = `${tipLabel}${last.time ? '\n' + last.time : ''}${last.accuracy ? '\nAccuracy: ' + last.accuracy.toFixed(0) + ' m' : ''}`;
-                                if (currentMarker) {
-                                    currentMarker.setLatLng([last.lat, last.lng]);
-                                    currentMarker.setStyle({ fillColor: markerColor });
-                                    currentMarker.setTooltipContent(tooltip);
+                            // ── Append new points to polyline (no full redraw) ─
+                            for (const p of newPts) {
+                                allLatLngs.push([p.lat, p.lng]);
+                                if (trackPolylines.length > 0) {
+                                    trackPolylines[trackPolylines.length - 1].addLatLng([p.lat, p.lng]);
                                 } else {
-                                    currentMarker = L.circleMarker([last.lat, last.lng], {
-                                        radius: 8, color: '#fff', fillColor: markerColor, fillOpacity: 1, weight: 2,
-                                        pane: 'markerPane',
-                                    }).bindTooltip(tooltip, { permanent: false, sticky: false }).addTo(map);
-                                }
-                                if (currentMarker.bringToFront) currentMarker.bringToFront();
-
-                                if (data.last_seen && $('lastSeenValue'))
-                                    $('lastSeenValue').textContent = data.last_seen;
-
-                                updateStats(allLatLngs.map((ll, i) => ({ lat: ll[0], lng: ll[1] })));
-                                setTimeout(() => map.invalidateSize(), 200);
-
-                            } else if (statusChanged) {
-                                // No new points but status flipped (e.g. went offline) — update marker color
-                                if (currentMarker && allLatLngs.length) {
-                                    const markerColor = newIsLive ? '#22c55e' : '#ef4444';
-                                    currentMarker.setStyle({ fillColor: markerColor });
-                                    if (currentMarker.bringToFront) currentMarker.bringToFront();
+                                    const poly = L.polyline([[p.lat, p.lng]], {
+                                        color: '#3b82f6', weight: 4, opacity: 0.9,
+                                    }).addTo(map);
+                                    trackPolylines.push(poly);
                                 }
                             }
+
+                            // ── Update live log count badge ───────────────────
+                            totalLogCount += newPts.length;
+                            const lcEl = ge('logCount');
+                            if (lcEl) lcEl.textContent = totalLogCount;
+                            const pvEl = ge('pointsVal');
+                            if (pvEl) pvEl.textContent = allLatLngs.length;
+
+                            // ── Move/create the current-position marker ───────
+                            const last        = newPts[newPts.length - 1];
+                            const markerColor = newIsLive ? '#22c55e' : '#ef4444';
+                            const acc         = last.accuracy ? parseFloat(last.accuracy) : null;
+                            const tooltip     = (newIsLive ? '● Live' : '● Last seen')
+                                              + (last.time ? '\n' + last.time : '')
+                                              + (acc ? '\nAccuracy: ' + acc.toFixed(0) + ' m' : '');
+
+                            if (currentMarker) {
+                                currentMarker.setLatLng([last.lat, last.lng]);
+                                currentMarker.setStyle({ fillColor: markerColor });
+                                currentMarker.setTooltipContent(tooltip);
+                            } else {
+                                currentMarker = L.circleMarker([last.lat, last.lng], {
+                                    radius: 8, color: '#fff', fillColor: markerColor,
+                                    fillOpacity: 1, weight: 2, pane: 'markerPane',
+                                }).bindTooltip(tooltip, { permanent: false, sticky: false }).addTo(map);
+                            }
+                            if (currentMarker.bringToFront) currentMarker.bringToFront();
+
                         } catch(e) {
                             pollErrors++;
                             err('pollMap error (consecutive=%d):', pollErrors, e);
-                            // Always continue — never let an error kill the loop
+                            // Never stop — always let schedulePoll reschedule
                         }
                     }
 
                     function schedulePoll() {
-                        // Back off briefly on repeated errors, but ALWAYS reschedule
-                        const delay = pollErrors > 5 ? 10000
+                        const delay = pollErrors > 5  ? 15000   // back off on repeated errors
                                     : currentStatus === 'live' ? 2000
                                     : 10000;
                         setTimeout(async () => { await pollMap(); schedulePoll(); }, delay);
                     }
 
                     schedulePoll();
-                    log('Polling started (incremental). Status=%s lastKnownId=%d', currentStatus, lastKnownId);
+                    log('Polling started. Status=%s lastKnownId=%d', currentStatus, lastKnownId);
 
                 })();
                 ]]>
