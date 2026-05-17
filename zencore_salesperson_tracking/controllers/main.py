@@ -146,10 +146,14 @@ class SalespersonTrackingController(http.Controller):
         tracking_status = tracker.tracking_status or 'offline'
         tz_name = self._user_tz(user)
 
+        # Cap initial page load to the last 500 points — the incremental poll
+        # will append any newer points in real time without a full reload.
+        MAX_INIT_POINTS = 500
         logs = request.env["salesperson.location.log"].sudo().search([
             ("tracker_id", "=", tracker_id),
             ("tracked_at", ">=", today_start),
-        ], order="tracked_at asc")
+        ], order="id desc", limit=MAX_INIT_POINTS)
+        logs = logs.sorted(key=lambda r: r.id)   # restore ascending order
 
         _logger.info(
             "moving_map: found %d location logs today for tracker_id=%s (since %s)",
@@ -161,6 +165,7 @@ class SalespersonTrackingController(http.Controller):
         for log in logs:
             if log.latitude and log.longitude:
                 points.append({
+                    "id":  log.id,
                     "lat": log.latitude,
                     "lng": log.longitude,
                     "accuracy": log.accuracy,
@@ -555,47 +560,76 @@ class SalespersonTrackingController(http.Controller):
 
     @http.route("/salesperson_tracking/moving_map_data/<int:tracker_id>", type="http", auth="user", methods=["GET"], csrf=False)
     def moving_map_data(self, tracker_id, **kwargs):
-        """JSON endpoint: returns today's location points + current tracking status for live map polling."""
+        """JSON endpoint: returns today's location points + current tracking status for live map polling.
+
+        Supports incremental fetching via ?after_id=<last_log_id> so the manager
+        page only fetches NEW points on each poll instead of all logs from today.
+        This prevents O(N) growth that caused stalls after ~30 min of continuous tracking.
+
+        First poll (no after_id): returns the last MAX_INIT_POINTS points for initial map draw.
+        Subsequent polls (?after_id=N): returns only rows with id > N — typically 1-3 rows per tick.
+        """
+        MAX_INIT_POINTS = 500   # cap initial load — enough to draw today's path
         user = self._check_access()
         tracker = request.env["salesperson.tracker"].sudo().browse(tracker_id)
         if not tracker.exists():
             _logger.warning("moving_map_data: tracker_id=%s not found", tracker_id)
             return self._json_response({"ok": False, "error": "Tracker not found"})
 
-        today_start = fields.Datetime.to_datetime(fields.Date.today())
-        logs = request.env["salesperson.location.log"].sudo().search([
-            ("tracker_id", "=", tracker_id),
-            ("tracked_at", ">=", today_start),
-        ], order="tracked_at asc")
-
         tz_name = self._user_tz(user)
+        today_start = fields.Datetime.to_datetime(fields.Date.today())
+
+        # Parse optional cursor from query string
+        after_id = kwargs.get("after_id") or request.httprequest.args.get("after_id")
+        try:
+            after_id = int(after_id) if after_id else None
+        except (ValueError, TypeError):
+            after_id = None
+
+        Log = request.env["salesperson.location.log"].sudo()
+
+        if after_id is not None:
+            # INCREMENTAL: only fetch rows newer than the cursor — O(1) per poll
+            domain = [
+                ("tracker_id", "=", tracker_id),
+                ("tracked_at", ">=", today_start),
+                ("id", ">", after_id),
+            ]
+            logs = Log.search(domain, order="id asc")
+        else:
+            # INITIAL LOAD: cap at MAX_INIT_POINTS most recent points to avoid
+            # serialising thousands of rows into JSON on first open.
+            # We fetch the last N by ordering desc then reversing.
+            domain = [
+                ("tracker_id", "=", tracker_id),
+                ("tracked_at", ">=", today_start),
+            ]
+            logs = Log.search(domain, order="id desc", limit=MAX_INIT_POINTS)
+            logs = logs.sorted(key=lambda r: r.id)   # restore ascending order
+
         points = []
-        skipped = 0
+        last_id = after_id or 0
         for log in logs:
             if log.latitude and log.longitude:
                 points.append({
+                    "id":  log.id,
                     "lat": log.latitude,
                     "lng": log.longitude,
                     "time": _localize_dt(log.tracked_at, tz_name),
                     "accuracy": log.accuracy,
                     "location_name": log.location_name or "",
                 })
-            else:
-                skipped += 1
+                if log.id > last_id:
+                    last_id = log.id
 
-        if skipped:
-            _logger.debug(
-                "moving_map_data: tracker_id=%s skipped %d logs with missing coords",
-                tracker_id, skipped,
-            )
-
-        # Fallback: use last known position when no log points yet
-        if not points and tracker.last_latitude and tracker.last_longitude:
+        # Fallback: use last known position when no log points at all (fresh start)
+        if not points and after_id is None and tracker.last_latitude and tracker.last_longitude:
             _logger.info(
                 "moving_map_data: tracker_id=%s has no log points — using last_known fallback lat=%s lng=%s",
                 tracker_id, tracker.last_latitude, tracker.last_longitude,
             )
             points.append({
+                "id":  0,
                 "lat": tracker.last_latitude,
                 "lng": tracker.last_longitude,
                 "time": _localize_dt(tracker.last_seen, tz_name) if tracker.last_seen else "",
@@ -603,14 +637,15 @@ class SalespersonTrackingController(http.Controller):
                 "location_name": tracker.location_name or "",
             })
 
-        total_dist = self._compute_total_distance(logs)
+        # Use tracker's pre-computed running total — avoids full haversine scan
+        tracker.invalidate_recordset()
+        total_dist = round(tracker.total_distance_km or 0.0, 3)
 
         _logger.debug(
-            "moving_map_data: tracker_id=%s status=%s points=%d total_dist=%.3f",
-            tracker_id, tracker.tracking_status, len(points), total_dist,
+            "moving_map_data: tracker_id=%s status=%s new_points=%d last_id=%d total_dist=%.3f after_id=%s",
+            tracker_id, tracker.tracking_status, len(points), last_id, total_dist, after_id,
         )
 
-        # status = "live" when is_tracking=True, "offline" otherwise (idle removed)
         status = "live" if tracker.is_tracking else "offline"
         return self._json_response({
             "ok": True,
@@ -618,6 +653,7 @@ class SalespersonTrackingController(http.Controller):
             "status_label": "Live" if tracker.is_tracking else "Offline",
             "is_tracking": tracker.is_tracking,
             "points": points,
+            "last_id": last_id,           # cursor for next incremental poll
             "last_lat": tracker.last_latitude or 0,
             "last_lng": tracker.last_longitude or 0,
             "last_seen": _localize_dt(tracker.last_seen, tz_name) if tracker.last_seen else "",
