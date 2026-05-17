@@ -621,150 +621,111 @@
                             return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
                         };
 
-                        // ── GPS: high-accuracy options ────────────────────────
-                        // enableHighAccuracy: true requests GPS hardware (not cell/WiFi).
-                        // maximumAge: 0       disables cached positions (always fresh).
-                        // timeout: 15000      gives GPS chip enough time to get a fix.
                         // ══════════════════════════════════════════════════════
-                        // GPS ARCHITECTURE
+                        // GPS ARCHITECTURE — watchPosition + setInterval POST
                         // ──────────────────────────────────────────────────────
-                        // Each tick calls getCurrentPosition() directly.
-                        // This guarantees a FRESH position reading every 2 s
-                        // regardless of movement — no stale cached position.
+                        // watchPosition keeps ONE persistent OS-level GPS listener.
+                        // The OS pushes fresh coordinates whenever the hardware has
+                        // them — no per-tick request, no overlapping calls, no
+                        // timeout chain that can break after N readings.
                         //
-                        // Why NOT watchPosition?
-                        //   On mobile, watchPosition fires only on OS movement
-                        //   events. Stationary users get zero callbacks, so
-                        //   latestPos stays stale and logs stop being written.
+                        // A separate setInterval fires every 2 s and POSTs the
+                        // LATEST position the watcher has buffered (latestPos).
+                        // If the phone is stationary the same coordinates are
+                        // re-posted every tick — that is intentional: the server
+                        // still writes a log row so the "last seen" stays fresh.
                         //
-                        // Why getCurrentPosition every tick?
-                        //   maximumAge:0 forces a fresh hardware reading.
-                        //   timeout:4000 ensures it finishes before the next tick.
-                        //   This is the only reliable way to log every 2 s.
-                        //
-                        // Geocoding (reverse lookup) is done SEPARATELY every 30 s
-                        // via /geocode — never inside update_live_location — so a
-                        // slow Nominatim response never blocks log creation.
+                        // Geocoding runs every 30 s via /geocode, fully separate.
                         // ══════════════════════════════════════════════════════
 
-                        const GEO_OPTS_TICK = {
-                            enableHighAccuracy: true,
-                            timeout: 4000,       // must finish before next 2 s tick
-                            maximumAge: 0,       // ALWAYS fresh — never cached
-                        };
-
-                        let sendIntervalId  = null;
-                        let tickBusy        = false;   // prevent overlapping ticks
-                        let tickBusyAt      = 0;       // timestamp when tickBusy was set
-                        const TICK_BUSY_TIMEOUT = 6000; // ms — force-release if GPS hangs
+                        let latestPos       = null;   // most recent GeolocationPosition
+                        let watchId         = null;   // navigator.geolocation.watchPosition handle
+                        let sendIntervalId  = null;   // setInterval for POST every 2 s
                         let geocodeIntervalId = null;
                         let lastGeocodeLat  = null;
                         let lastGeocodeLng  = null;
 
-                        // ── Single tick: get fresh GPS fix then POST ──────────
-                        function doTick() {
+                        // ── watchPosition callbacks ───────────────────────────
+                        function onGpsSuccess(pos) {
+                            latestPos = pos;
+                            log('watchPosition: lat=%.6f lng=%.6f acc=%.1fm',
+                                pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+                            if ($('accuracyValue'))
+                                $('accuracyValue').textContent = pos.coords.accuracy.toFixed(1) + ' m';
+                        }
+
+                        function onGpsError(geoErr) {
+                            const msgs = {
+                                1: 'Location access denied — enable GPS in browser settings.',
+                                2: 'GPS signal unavailable.',
+                                3: 'GPS timeout — retrying.',
+                            };
+                            const msg = msgs[geoErr.code] || ('GPS error: ' + geoErr.message);
+                            warn('watchPosition error code=%d: %s', geoErr.code, msg);
+                            updateStatusMessage(msg, 'error');
+                            // code 3 (timeout) is non-fatal — watchPosition retries automatically.
+                            // code 1 (denied) is fatal — nothing we can do without user action.
+                        }
+
+                        // ── POST tick — fires every 2 s via setInterval ───────
+                        async function doTick() {
                             if (!state.tracking || !isOwner) return;
-                            if (tickBusy) {
-                                // Bug fix: GPS can hang on Android without calling either
-                                // callback (known Chrome/WebView bug). If the busy lock
-                                // has been held for more than TICK_BUSY_TIMEOUT ms, force-
-                                // release it so the next tick can proceed normally.
-                                if (Date.now() - tickBusyAt > TICK_BUSY_TIMEOUT) {
-                                    warn('doTick: tickBusy watchdog fired — force-releasing stuck lock');
-                                    tickBusy = false;
-                                } else {
-                                    log('doTick: previous tick still running — skipping');
-                                    return;
-                                }
+                            if (!latestPos) {
+                                log('doTick: no GPS fix yet — waiting');
+                                return;
                             }
-                            tickBusy  = true;
-                            tickBusyAt = Date.now();
 
-                            navigator.geolocation.getCurrentPosition(
-                                async function(pos) {
-                                    const lat = pos.coords.latitude;
-                                    const lng = pos.coords.longitude;
-                                    const acc = pos.coords.accuracy;
+                            const lat = latestPos.coords.latitude;
+                            const lng = latestPos.coords.longitude;
+                            const acc = latestPos.coords.accuracy;
 
-                                    log('doTick: GPS lat=%.6f lng=%.6f acc=%.1fm', lat, lng, acc);
-                                    if ($('accuracyValue')) $('accuracyValue').textContent = acc.toFixed(1) + ' m';
+                            const isFirst = state.lastLat === null;
+                            let tickDelta = 0;
+                            if (!isFirst)
+                                tickDelta = haversine(state.lastLat, state.lastLng, lat, lng);
+                            state.totalDistance += tickDelta;
+                            state.lastLat = lat;
+                            state.lastLng = lng;
 
-                                    const isFirst = state.lastLat === null;
-                                    // tickDelta = distance moved since last tick (km).
-                                    // We send only the INCREMENT, not cumulative total.
-                                    // Server adds this to its own running total.
-                                    let tickDelta = 0;
-                                    if (!isFirst)
-                                        tickDelta = haversine(state.lastLat, state.lastLng, lat, lng);
-                                    state.totalDistance += tickDelta;
-                                    state.lastLat = lat;
-                                    state.lastLng = lng;
+                            try {
+                                const result = await postJson('/salesperson_tracking/update', {
+                                    latitude:   lat,
+                                    longitude:  lng,
+                                    accuracy:   acc,
+                                    distance:   tickDelta,
+                                    tracker_id: trackerId,
+                                });
+                                state.consecutiveErrors = 0;
 
-                                    try {
-                                        const result = await postJson('/salesperson_tracking/update', {
-                                            latitude:   lat,
-                                            longitude:  lng,
-                                            accuracy:   acc,
-                                            distance:   tickDelta,   // per-tick delta, NOT cumulative
-                                            tracker_id: trackerId,
-                                        });
-                                        state.consecutiveErrors = 0;
+                                if ($('latitudeValue'))  $('latitudeValue').textContent  = lat.toFixed(6);
+                                if ($('longitudeValue')) $('longitudeValue').textContent = lng.toFixed(6);
+                                if ($('lastSeenValue'))  $('lastSeenValue').textContent  = result.last_seen || new Date().toLocaleTimeString();
+                                if ($('kpiDistance') && result.total_distance_km != null)
+                                    $('kpiDistance').textContent = parseFloat(result.total_distance_km).toFixed(1);
 
-                                        if ($('latitudeValue'))  $('latitudeValue').textContent  = lat.toFixed(6);
-                                        if ($('longitudeValue')) $('longitudeValue').textContent = lng.toFixed(6);
-                                        if ($('lastSeenValue'))  $('lastSeenValue').textContent  = result.last_seen || new Date().toLocaleTimeString();
-                                        if ($('kpiDistance') && result.total_distance_km != null)
-                                            $('kpiDistance').textContent = parseFloat(result.total_distance_km).toFixed(1);
+                                pushToMap(lat, lng, isFirst);
+                                updateStatusMessage('Tracking Active — updating every 2 seconds', 'info');
 
-                                        pushToMap(lat, lng, isFirst);
-                                        updateStatusMessage('Tracking Active — updating every 2 seconds', 'info');
-
-                                    } catch(e) {
-                                        state.consecutiveErrors++;
-                                        err('doTick POST error (%d): %s', state.consecutiveErrors, e.message);
-                                        updateStatusMessage('Update error: ' + e.message + ' — will retry', 'error');
-
-                                        // Bug fix: never permanently stop the interval on network errors.
-                                        // Transient failures (Odoo worker timeout, mobile network blip)
-                                        // must not kill tracking silently. Instead, reset consecutiveErrors
-                                        // after 10 failures so the counter never permanently blocks ticks.
-                                        if (state.consecutiveErrors >= 10) {
-                                            warn('doTick: %d consecutive errors — resetting counter and continuing', state.consecutiveErrors);
-                                            state.consecutiveErrors = 0;
-                                            updateStatusMessage('Network unstable — retrying…', 'error');
-                                        }
-                                    } finally {
-                                        tickBusy = false;
-                                    }
-                                },
-                                function(geoErr) {
-                                    tickBusy = false;
-                                    const msgs = {
-                                        1: 'Location access denied — enable GPS in browser settings.',
-                                        2: 'GPS signal unavailable.',
-                                        3: 'GPS timeout — will retry next tick.',
-                                    };
-                                    const msg = msgs[geoErr.code] || ('GPS error: ' + geoErr.message);
-                                    err('doTick GPS error code=%d: %s', geoErr.code, msg);
-                                    updateStatusMessage(msg, 'error');
-                                },
-                                GEO_OPTS_TICK
-                            );
+                            } catch(e) {
+                                state.consecutiveErrors++;
+                                err('doTick POST error (%d): %s', state.consecutiveErrors, e.message);
+                                updateStatusMessage('Network error — will retry next tick', 'error');
+                                // Never stop the interval on network errors — just keep retrying.
+                            }
                         }
 
                         function startSendInterval() {
                             if (sendIntervalId !== null) return;
-                            tickBusy = false;
-                            doTick();   // fire immediately
                             sendIntervalId = setInterval(doTick, 2000);
+                            doTick();   // fire immediately without waiting 2 s
                             log('sendInterval started (every 2 s)');
 
-                            // Geocode every 30 s — separate from log updates
+                            // Geocode every 30 s
                             geocodeIntervalId = setInterval(async () => {
                                 if (!state.tracking || state.lastLat === null) return;
                                 if (Math.abs(state.lastLat - (lastGeocodeLat || 0)) < 0.0005 &&
                                     Math.abs(state.lastLng - (lastGeocodeLng || 0)) < 0.0005 &&
-                                    lastGeocodeLat !== null) return;  // haven't moved enough
+                                    lastGeocodeLat !== null) return;
                                 lastGeocodeLat = state.lastLat;
                                 lastGeocodeLng = state.lastLng;
                                 try {
@@ -787,14 +748,28 @@
                                 clearInterval(geocodeIntervalId);
                                 geocodeIntervalId = null;
                             }
-                            tickBusy = false;
                             log('sendInterval stopped');
                         }
 
-                        // startWatchingPosition / stopWatchingPosition kept as no-ops
-                        // so call-sites in applyServerState / stopTracking still work.
-                        function startWatchingPosition() {}
-                        function stopWatchingPosition() {}
+                        function startWatchingPosition() {
+                            if (watchId !== null) return;
+                            latestPos = null;
+                            watchId = navigator.geolocation.watchPosition(
+                                onGpsSuccess,
+                                onGpsError,
+                                { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+                            );
+                            log('watchPosition started (watchId=%d)', watchId);
+                        }
+
+                        function stopWatchingPosition() {
+                            if (watchId !== null) {
+                                navigator.geolocation.clearWatch(watchId);
+                                watchId   = null;
+                                latestPos = null;
+                                log('watchPosition cleared');
+                            }
+                        }
 
                         const tickTimer = () => {
                             const el = $('takingTimeValue');
