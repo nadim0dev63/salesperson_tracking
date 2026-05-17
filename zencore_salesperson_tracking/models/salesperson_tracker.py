@@ -196,32 +196,65 @@ class SalespersonTracker(models.Model):
             # calls /salesperson_tracking/geocode separately (throttled, async).
             location_name = self.location_name or ""
 
-            # 1. Update tracker — fast, no HTTP calls
-            self.write({
-                "is_tracking": True,
-                "last_seen": now,
-                "last_latitude": latitude,
-                "last_longitude": longitude,
-                "last_accuracy": accuracy or 0.0,
-                "total_distance_km": self.total_distance_km + (distance or 0.0),
-                "location_name": location_name,
-            })
-            _logger.debug("update_live_location: tracker updated ok")
+            # ── 1. Update tracker position using a single atomic SQL UPDATE ──
+            # We use raw SQL for two reasons:
+            #   a) total_distance_km += delta must be atomic (no read-modify-write
+            #      race between concurrent worker requests for the same tracker).
+            #   b) We do NOT write is_tracking here — it is already True (set by
+            #      action_start_tracking).  Writing it on every tick triggers ORM
+            #      recomputes and row-level locks that cause serialization failures.
+            self.env.cr.execute(
+                """
+                UPDATE salesperson_tracker
+                   SET last_seen          = %s,
+                       last_latitude      = %s,
+                       last_longitude     = %s,
+                       last_accuracy      = %s,
+                       total_distance_km  = total_distance_km + %s,
+                       location_name      = %s
+                 WHERE id = %s
+                """,
+                (
+                    now,
+                    latitude,
+                    longitude,
+                    accuracy or 0.0,
+                    distance or 0.0,
+                    location_name,
+                    self.id,
+                ),
+            )
+            # Invalidate ORM cache so subsequent field reads are fresh
+            self.invalidate_recordset()
+            _logger.debug("update_live_location: tracker updated ok (SQL)")
 
-            # 2. Append location log entry — always, every call
-            log_vals = {
-                "tracker_id": self.id,
-                "tracked_at": now,
-                "latitude": latitude,
-                "longitude": longitude,
-                "accuracy": accuracy or 0.0,
-                "source": source,
-                "location_name": location_name,
-            }
-            log = self.env["salesperson.location.log"].sudo().create(log_vals)
-            _logger.debug("update_live_location: log created id=%s", log.id)
+            # ── 2. Append location log — separate INSERT, no FK recomputes ──
+            self.env.cr.execute(
+                """
+                INSERT INTO salesperson_location_log
+                    (tracker_id, user_id, tracked_at, latitude, longitude, accuracy, source,
+                     location_name, create_uid, write_uid, create_date, write_date)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now(), now())
+                """,
+                (
+                    self.id,
+                    self.user_id.id,
+                    now,
+                    latitude,
+                    longitude,
+                    accuracy or 0.0,
+                    source,
+                    location_name,
+                    self.env.uid,
+                    self.env.uid,
+                ),
+            )
+            # Retrieve the new log id for logging
+            self.env.cr.execute("SELECT lastval()")
+            log_id = self.env.cr.fetchone()[0]
+            _logger.debug("update_live_location: log created id=%s (SQL)", log_id)
 
-            # 3. Geofence auto check-in / check-out
+            # ── 3. Geofence — debounced, runs at most every 10 s ─────────────
             try:
                 self._check_geofence(latitude, longitude)
             except Exception as gf_err:
@@ -230,17 +263,14 @@ class SalespersonTracker(models.Model):
                     self.id, gf_err, exc_info=True,
                 )
 
-            # 4. Update active session's last position
-            if self.current_session_id and self.current_session_id.state == "active":
-                self.current_session_id.write({
-                    "last_location_lat": latitude,
-                    "last_location_lng": longitude,
-                })
-                _logger.debug("update_live_location: session %s position updated", self.current_session_id.id)
+            # ── 4. Session position — skip on every tick to avoid lock contention.
+            # The session row is updated by action_stop_tracking when the session
+            # ends; updating it every 2 s adds a second row lock per tick with no
+            # meaningful benefit (the session's last_location is only read on stop).
 
             _logger.info(
                 "update_live_location: SUCCESS tracker=%s user=%s lat=%.6f lng=%.6f log_id=%s",
-                self.id, self.user_id.name, latitude, longitude, log.id,
+                self.id, self.user_id.name, latitude, longitude, log_id,
             )
 
         except Exception as e:
