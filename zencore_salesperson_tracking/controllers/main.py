@@ -588,6 +588,57 @@ class SalespersonTrackingController(http.Controller):
             "total_logs": total_logs,
         })
 
+    @http.route("/salesperson_tracking/debug/<int:tracker_id>", type="http", auth="user", methods=["GET"], csrf=False)
+    def debug_tracker(self, tracker_id, **kw):
+        """Raw diagnostic endpoint — reads directly from SQL, no ORM cache.
+        Access: /salesperson_tracking/debug/<tracker_id>
+        Returns JSON with full tracker + recent log stats for debugging."""
+        user = request.env.user
+        request.env.cr.execute(
+            """
+            SELECT
+                t.id, t.is_tracking, t.last_seen, t.last_latitude, t.last_longitude,
+                t.last_accuracy, t.total_distance_km, t.location_name,
+                t.create_date,
+                (SELECT COUNT(*) FROM salesperson_location_log l WHERE l.tracker_id = t.id) AS total_logs,
+                (SELECT COUNT(*) FROM salesperson_location_log l
+                    WHERE l.tracker_id = t.id
+                    AND l.tracked_at >= NOW() - INTERVAL '2 minutes') AS logs_last_2min,
+                (SELECT COUNT(*) FROM salesperson_location_log l
+                    WHERE l.tracker_id = t.id
+                    AND l.tracked_at >= NOW() - INTERVAL '10 minutes') AS logs_last_10min,
+                (SELECT MAX(l.tracked_at) FROM salesperson_location_log l WHERE l.tracker_id = t.id) AS last_log_at,
+                (SELECT MIN(l.tracked_at) FROM salesperson_location_log l
+                    WHERE l.tracker_id = t.id
+                    AND l.tracked_at >= NOW() - INTERVAL '10 minutes') AS first_recent_log_at
+            FROM salesperson_tracker t
+            WHERE t.id = %s
+            """,
+            (tracker_id,),
+        )
+        row = request.env.cr.fetchone()
+        if not row:
+            return self._json_response({"ok": False, "error": "Tracker not found"})
+
+        cols = ["id","is_tracking","last_seen","last_latitude","last_longitude",
+                "last_accuracy","total_distance_km","location_name","create_date",
+                "total_logs","logs_last_2min","logs_last_10min","last_log_at","first_recent_log_at"]
+        data = dict(zip(cols, row))
+
+        # Convert datetimes to strings
+        for k in ("last_seen","create_date","last_log_at","first_recent_log_at"):
+            if data[k]:
+                data[k] = str(data[k])
+
+        data["ok"] = True
+        data["server_now"] = str(request.env.cr.execute("SELECT NOW()") or "") 
+        request.env.cr.execute("SELECT NOW()")
+        data["server_now"] = str(request.env.cr.fetchone()[0])
+        data["requesting_user"] = user.login
+
+        _logger.info("debug_tracker: tracker=%s data=%s", tracker_id, data)
+        return self._json_response(data)
+
     @http.route("/salesperson_tracking/moving_map_data/<int:tracker_id>", type="http", auth="user", methods=["GET"], csrf=False)
     def moving_map_data(self, tracker_id, **kwargs):
         """JSON endpoint: returns today's location points + current tracking status for live map polling."""

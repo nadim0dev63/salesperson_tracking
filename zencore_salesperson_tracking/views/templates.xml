@@ -2,7 +2,7 @@
 <odoo>
 
     <!-- ══════════════════════════════════════════════════════════════════════════
-         LIVE TRACKING PAGE - UNIFIED DESIGN FOR BOTH SALESPERSON AND MANAGER
+         LIVE TRACKING PAGE - CONTINUOUS TRACKING
     ═══════════════════════════════════════════════════════════════════════════ -->
     <template id="live_tracking_page" name="ZenCore Live Tracking Page">
         <html lang="en">
@@ -13,345 +13,56 @@
                 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"/>
                 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
                 <style>
-                    * {
-                        margin: 0;
-                        padding: 0;
-                        box-sizing: border-box;
-                    }
-
-                    body {
-                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-                        background: #f0f4f8;
-                        min-height: 100vh;
-                    }
-
-                    /* Main container - Mobile first */
-                    .tracking-container {
-                        max-width: 480px;
-                        margin: 0 auto;
-                        background: #f5f7fb;
-                        min-height: 100vh;
-                    }
-
-                    /* Header */
-                    .app-header {
-                        background: white;
-                        padding: 16px 20px;
-                        border-bottom: 1px solid #e8ecf0;
-                    }
-
-                    .app-header h1 {
-                        font-size: 22px;
-                        font-weight: 600;
-                        color: #1a1f36;
-                        margin-bottom: 4px;
-                    }
-
-                    .app-header-sub {
-                        font-size: 13px;
-                        color: #6b7280;
-                    }
-
-                    /* Stats Grid - 2x3 layout */
-                    .stats-grid {
-                        background: white;
-                        margin: 12px 16px;
-                        border-radius: 20px;
-                        overflow: hidden;
-                        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-                    }
-
-                    .stats-row {
-                        display: flex;
-                        border-bottom: 1px solid #f0f2f5;
-                    }
-
-                    .stats-row:last-child {
-                        border-bottom: none;
-                    }
-
-                    .stat-item {
-                        flex: 1;
-                        padding: 16px 12px;
-                        text-align: center;
-                        border-right: 1px solid #f0f2f5;
-                    }
-
-                    .stat-item:last-child {
-                        border-right: none;
-                    }
-
-                    .stat-label {
-                        font-size: 11px;
-                        font-weight: 500;
-                        color: #8b92a8;
-                        text-transform: uppercase;
-                        letter-spacing: 0.5px;
-                        margin-bottom: 8px;
-                    }
-
-                    .stat-value {
-                        font-size: 14px;
-                        font-weight: 600;
-                        color: #1a1f36;
-                        word-break: break-word;
-                    }
-
-                    /* KPI Row - 4 columns */
-                    .kpi-row {
-                        display: flex;
-                        background: white;
-                        margin: 12px 16px;
-                        border-radius: 20px;
-                        padding: 16px 12px;
-                        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-                    }
-
-                    .kpi-item {
-                        flex: 1;
-                        text-align: center;
-                    }
-
-                    .kpi-number {
-                        font-size: 24px;
-                        font-weight: 700;
-                        line-height: 1.2;
-                    }
-
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f0f4f8; min-height: 100vh; }
+                    .tracking-container { max-width: 480px; margin: 0 auto; background: #f5f7fb; min-height: 100vh; }
+                    .app-header { background: white; padding: 16px 20px; border-bottom: 1px solid #e8ecf0; }
+                    .app-header h1 { font-size: 22px; font-weight: 600; color: #1a1f36; margin-bottom: 4px; }
+                    .app-header-sub { font-size: 13px; color: #6b7280; }
+                    .stats-grid { background: white; margin: 12px 16px; border-radius: 20px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+                    .stats-row { display: flex; border-bottom: 1px solid #f0f2f5; }
+                    .stats-row:last-child { border-bottom: none; }
+                    .stat-item { flex: 1; padding: 16px 12px; text-align: center; border-right: 1px solid #f0f2f5; }
+                    .stat-item:last-child { border-right: none; }
+                    .stat-label { font-size: 11px; font-weight: 500; color: #8b92a8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+                    .stat-value { font-size: 14px; font-weight: 600; color: #1a1f36; word-break: break-word; }
+                    .kpi-row { display: flex; background: white; margin: 12px 16px; border-radius: 20px; padding: 16px 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+                    .kpi-item { flex: 1; text-align: center; }
+                    .kpi-number { font-size: 24px; font-weight: 700; line-height: 1.2; }
                     .kpi-number.planned { color: #6b7280; }
                     .kpi-number.visited { color: #10b981; }
                     .kpi-number.rate { color: #3b82f6; }
                     .kpi-number.distance { color: #8b5cf6; }
-
-                    .kpi-label {
-                        font-size: 11px;
-                        font-weight: 500;
-                        color: #8b92a8;
-                        text-transform: uppercase;
-                        letter-spacing: 0.5px;
-                        margin-top: 4px;
-                    }
-
-                    /* Map Container */
-                    .map-container {
-                        margin: 12px 16px;
-                        border-radius: 20px;
-                        overflow: hidden;
-                        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-                        position: relative;
-                    }
-
-                    #liveMap {
-                        height: 280px;
-                        width: 100%;
-                        background: #e8ecf0;
-                    }
-
-                    .map-attribution {
-                        position: absolute;
-                        bottom: 8px;
-                        right: 8px;
-                        background: rgba(255,255,255,0.9);
-                        padding: 2px 8px;
-                        border-radius: 12px;
-                        font-size: 10px;
-                        color: #6b7280;
-                        z-index: 1000;
-                        pointer-events: none;
-                    }
-
-                    /* Action Buttons */
-                    .action-buttons {
-                        display: flex;
-                        gap: 12px;
-                        margin: 16px 16px 12px;
-                        flex-wrap: wrap;
-                    }
-
-                    .btn {
-                        flex: 1;
-                        display: inline-flex;
-                        align-items: center;
-                        justify-content: center;
-                        gap: 8px;
-                        padding: 12px 20px;
-                        border-radius: 40px;
-                        font-size: 14px;
-                        font-weight: 600;
-                        border: none;
-                        cursor: pointer;
-                        transition: all 0.2s ease;
-                        text-decoration: none;
-                    }
-
-                    .btn-start {
-                        background: #3b82f6;
-                        color: white;
-                        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-                    }
-
+                    .kpi-label { font-size: 11px; font-weight: 500; color: #8b92a8; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+                    .map-container { margin: 12px 16px; border-radius: 20px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); position: relative; }
+                    #liveMap { height: 280px; width: 100%; background: #e8ecf0; }
+                    .map-attribution { position: absolute; bottom: 8px; right: 8px; background: rgba(255,255,255,0.9); padding: 2px 8px; border-radius: 12px; font-size: 10px; color: #6b7280; z-index: 1000; pointer-events: none; }
+                    .action-buttons { display: flex; gap: 12px; margin: 16px 16px 12px; flex-wrap: wrap; }
+                    .btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 20px; border-radius: 40px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; transition: all 0.2s ease; text-decoration: none; }
+                    .btn-start { background: #3b82f6; color: white; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
                     .btn-start:hover { background: #2563eb; transform: translateY(-1px); }
-
-                    .btn-stop {
-                        background: #ef4444;
-                        color: white;
-                    }
-
+                    .btn-stop { background: #ef4444; color: white; }
                     .btn-stop:hover { background: #dc2626; }
-
-                    .btn-camera {
-                        background: #8b5cf6;
-                        color: white;
-                    }
-
+                    .btn-camera { background: #8b5cf6; color: white; }
                     .btn-camera:hover { background: #7c3aed; }
-
-                    .btn-map {
-                        background: #f3f4f6;
-                        color: #374151;
-                        border: 1px solid #e5e7eb;
-                    }
-
+                    .btn-map { background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; }
                     .btn-map:hover { background: #e5e7eb; }
-
-                    .btn:disabled {
-                        opacity: 0.5;
-                        cursor: not-allowed;
-                        transform: none;
-                    }
-
-                    /* Status Message */
-                    .status-message {
-                        margin: 12px 16px 16px;
-                        padding: 12px 16px;
-                        border-radius: 16px;
-                        display: flex;
-                        align-items: center;
-                        gap: 10px;
-                        font-size: 13px;
-                    }
-
-                    .status-message.info {
-                        background: #ecfdf5;
-                        color: #065f46;
-                        border-left: 3px solid #10b981;
-                    }
-
-                    .status-message.warning {
-                        background: #fef3c7;
-                        color: #92400e;
-                        border-left-color: #f59e0b;
-                    }
-
-                    .status-message.error {
-                        background: #fee2e2;
-                        color: #991b1b;
-                        border-left-color: #ef4444;
-                    }
-
-                    .status-dot {
-                        width: 8px;
-                        height: 8px;
-                        border-radius: 50%;
-                        background: #10b981;
-                        animation: pulse 1.5s infinite;
-                    }
-
-                    .status-dot.offline {
-                        background: #9ca3af;
-                        animation: none;
-                    }
-
-                    @keyframes pulse {
-                        0%, 100% { opacity: 1; transform: scale(1); }
-                        50% { opacity: 0.5; transform: scale(0.8); }
-                    }
-
-                    /* Camera overlay */
-                    .camera-overlay {
-                        position: fixed;
-                        top: 0;
-                        left: 0;
-                        width: 100%;
-                        height: 100%;
-                        background: black;
-                        z-index: 2000;
-                        display: none;
-                        flex-direction: column;
-                        justify-content: center;
-                        align-items: center;
-                    }
-
-                    .camera-overlay video {
-                        width: 100%;
-                        max-height: 80vh;
-                        object-fit: cover;
-                    }
-
-                    .camera-controls {
-                        position: absolute;
-                        bottom: 40px;
-                        left: 0;
-                        right: 0;
-                        display: flex;
-                        justify-content: center;
-                        gap: 40px;
-                        padding: 20px;
-                        background: rgba(0,0,0,0.6);
-                    }
-
-                    .shutter-btn {
-                        width: 70px;
-                        height: 70px;
-                        border-radius: 50%;
-                        background: white;
-                        border: 3px solid #ddd;
-                        cursor: pointer;
-                    }
-
-                    .shutter-inner {
-                        width: 100%;
-                        height: 100%;
-                        border-radius: 50%;
-                        background: #ef4444;
-                    }
-
-                    .close-camera {
-                        width: 50px;
-                        height: 50px;
-                        border-radius: 50%;
-                        background: #ef4444;
-                        border: none;
-                        color: white;
-                        font-size: 24px;
-                        cursor: pointer;
-                    }
-
-                    .snap-notification {
-                        position: fixed;
-                        bottom: 100px;
-                        left: 20px;
-                        right: 20px;
-                        background: #22c55e;
-                        color: white;
-                        padding: 12px;
-                        border-radius: 50px;
-                        text-align: center;
-                        z-index: 2001;
-                        display: none;
-                    }
-
-                    /* Read-only badge for viewers */
-                    .readonly-badge {
-                        display: inline-flex;
-                        align-items: center;
-                        gap: 5px;
-                        background: #fef3c7;
-                        padding: 6px 12px;
-                        border-radius: 20px;
-                        font-size: 12px;
-                        color: #92400e;
-                    }
+                    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+                    .status-message { margin: 12px 16px 16px; padding: 12px 16px; border-radius: 16px; display: flex; align-items: center; gap: 10px; font-size: 13px; }
+                    .status-message.info { background: #ecfdf5; color: #065f46; border-left: 3px solid #10b981; }
+                    .status-message.warning { background: #fef3c7; color: #92400e; border-left-color: #f59e0b; }
+                    .status-message.error { background: #fee2e2; color: #991b1b; border-left-color: #ef4444; }
+                    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; animation: pulse 1.5s infinite; }
+                    .status-dot.offline { background: #9ca3af; animation: none; }
+                    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } }
+                    .camera-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: black; z-index: 2000; display: none; flex-direction: column; justify-content: center; align-items: center; }
+                    .camera-overlay video { width: 100%; max-height: 80vh; object-fit: cover; }
+                    .camera-controls { position: absolute; bottom: 40px; left: 0; right: 0; display: flex; justify-content: center; gap: 40px; padding: 20px; background: rgba(0,0,0,0.6); }
+                    .shutter-btn { width: 70px; height: 70px; border-radius: 50%; background: white; border: 3px solid #ddd; cursor: pointer; }
+                    .shutter-inner { width: 100%; height: 100%; border-radius: 50%; background: #ef4444; }
+                    .close-camera { width: 50px; height: 50px; border-radius: 50%; background: #ef4444; border: none; color: white; font-size: 24px; cursor: pointer; }
+                    .snap-notification { position: fixed; bottom: 100px; left: 20px; right: 20px; background: #22c55e; color: white; padding: 12px; border-radius: 50px; text-align: center; z-index: 2001; display: none; }
+                    .readonly-badge { display: inline-flex; align-items: center; gap: 5px; background: #fef3c7; padding: 6px 12px; border-radius: 20px; font-size: 12px; color: #92400e; }
                 </style>
             </head>
             <body>
@@ -361,17 +72,14 @@
                      t-att-data-distance="'%.1f' % total_distance_km" 
                      t-att-data-is-tracking="'1' if tracker.is_tracking else '0'"
                      t-att-data-is-owner="'1' if is_owner else '0'"
-                     t-att-data-last-seen-ts="int(tracker.last_seen.timestamp()) if tracker.last_seen else 0"
                      style="display:none"/>
 
                 <div class="tracking-container">
-                    <!-- Header -->
                     <div class="app-header">
                         <h1>Live GPS Tracking</h1>
                         <div class="app-header-sub"><t t-out="tracker.user_id.name or user.name"/></div>
                     </div>
 
-                    <!-- Stats Grid (2x3) -->
                     <div class="stats-grid">
                         <div class="stats-row">
                             <div class="stat-item">
@@ -397,13 +105,12 @@
                                 <div class="stat-value" id="longitudeValue"><t t-out="'%.6f' % tracker.last_longitude if tracker.last_longitude else '—'"/></div>
                             </div>
                             <div class="stat-item">
-                                <div class="stat-label">TAKING TIME</div>
+                                <div class="stat-label">TRACKING TIME</div>
                                 <div class="stat-value" id="takingTimeValue">00:00</div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- KPI Row -->
                     <div class="kpi-row">
                         <div class="kpi-item">
                             <div class="kpi-number planned" id="kpiPlan"><t t-out="today_plan_count"/></div>
@@ -423,13 +130,11 @@
                         </div>
                     </div>
 
-                    <!-- Map -->
                     <div class="map-container">
                         <div id="liveMap"></div>
                         <div class="map-attribution">Leaflet | © OpenStreetMap contributors</div>
                     </div>
 
-                    <!-- Action Buttons -->
                     <div class="action-buttons">
                         <t t-if="is_owner">
                             <button id="startButton" class="btn btn-start">
@@ -437,7 +142,7 @@
                                     <circle cx="12" cy="12" r="10"/>
                                     <polygon points="10 8 16 12 10 16 10 8"/>
                                 </svg>
-                                Start tracking
+                                Start
                             </button>
                             <button id="stopButton" class="btn btn-stop">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -451,7 +156,7 @@
                                     <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                                     <circle cx="12" cy="13" r="4"/>
                                 </svg>
-                                Open Camera
+                                Camera
                             </button>
                         </t>
                         <t t-else="">
@@ -460,7 +165,7 @@
                                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                                     <circle cx="12" cy="12" r="3"/>
                                 </svg>
-                                Viewing <t t-out="tracker.user_id.name"/>'s live GPS — read only
+                                Viewing <t t-out="tracker.user_id.name"/>'s live GPS
                             </div>
                         </t>
                         <a t-attf-href="/salesperson_tracking/moving_map/#{tracker.id}" class="btn btn-map" target="_blank">
@@ -468,18 +173,16 @@
                                 <path d="M12 22s8-5.5 8-12a8 8 0 1 0-16 0c0 6.5 8 12 8 12z"/>
                                 <circle cx="12" cy="10" r="3"/>
                             </svg>
-                            Open Map
+                            Full Map
                         </a>
                     </div>
 
-                    <!-- Status Message -->
                     <div class="status-message info" id="statusMessage">
                         <span class="status-dot" id="statusDot"></span>
-                        <span id="statusText"><t t-if="is_owner">Tap Start, allow GPS permission, and the browser will send location updates every 2 seconds.</t><t t-else="">You are viewing <t t-out="tracker.user_id.name"/>'s live location. This page auto-updates every 3 seconds.</t></span>
+                        <span id="statusText"><t t-if="is_owner">Press Start and allow GPS permission to begin tracking.</t><t t-else="">Viewing <t t-out="tracker.user_id.name"/>'s live location.</t></span>
                     </div>
                 </div>
 
-                <!-- Camera overlay -->
                 <div class="camera-overlay" id="cameraOverlay">
                     <video id="selfieVideo" autoplay="autoplay" playsinline="playsinline" muted="muted"></video>
                     <div class="camera-controls">
@@ -492,539 +195,361 @@
 
                 <script>
                 <![CDATA[
-                    (function() {
-                        'use strict';
+                (function() {
+                    'use strict';
 
-                        // ── Debug logger ──────────────────────────────────────
-                        const log  = (...a) => console.log('[LiveTracking]', ...a);
-                        const warn = (...a) => console.warn('[LiveTracking]', ...a);
-                        const err  = (...a) => console.error('[LiveTracking]', ...a);
+                    const root = document.getElementById('trackingRoot');
+                    if (!root) return;
 
-                        const root = document.getElementById('trackingRoot');
-                        if (!root) return;
+                    const isOwner = root.dataset.isOwner === '1';
+                    const trackerId = root.dataset.trackerId;
+                    const isTrackingInit = root.dataset.isTracking === '1';
 
-                        const isOwner   = root.dataset.isOwner   === '1';
-                        const trackerId = root.dataset.trackerId;
+                    const state = {
+                        tracking: isTrackingInit && isOwner,
+                        sendIntervalId: null,
+                        timerIntervalId: null,
+                        trackingStart: null,
+                        lastLat: null,
+                        lastLng: null,
+                        totalDistance: parseFloat(root.dataset.distance || '0'),
+                        userMovedMap: false,
+                        mapInitialised: false,
+                    };
 
-                        // State is driven by the SERVER (DB) — not by what this tab thinks.
-                        // Every 2 s we poll /status/:id to get the real is_tracking flag.
-                        // This means: if another tab stops tracking, this tab reflects it too.
-                        const state = {
-                            tracking: false,          // mirrors DB is_tracking
-                            gpsIntervalId: null,      // setInterval for GPS send
-                            timerIntervalId: null,    // setInterval for clock
-                            trackingStart: null,      // Date.now() when this tab started sending
-                            lastLat: null,
-                            lastLng: null,
-                            totalDistance: parseFloat(root.dataset.distance || '0'),
-                            consecutiveErrors: 0,
-                            userMovedMap: false,      // true after user manually pans/zooms → disable auto-pan
-                            mapInitialised: false,
-                        };
-
-                        const $ = id => document.getElementById(id);
-
-                        // ── Map ───────────────────────────────────────────────
-                        let liveMap      = null;
-                        let liveMarker   = null;
-                        let livePolyline = null;
-                        let livePath     = [];
-
-                        function initLiveMap() {
-                            if (state.mapInitialised || typeof L === 'undefined') return;
-                            const el = $('liveMap');
-                            if (!el) return;
-                            liveMap = L.map('liveMap', { zoomControl: true }).setView([23.7701, 90.4254], 14);
-                            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                                attribution: '', maxZoom: 19,
-                            }).addTo(liveMap);
-
-                            // Detect ANY manual interaction → permanently disable auto-follow.
-                            // 'zoomstart' catches pinch-zoom on mobile.
-                            // 'dragstart' catches panning.
-                            // 'zoom' catches scroll-wheel zoom on desktop.
-                            liveMap.on('dragstart zoomstart zoom', () => {
-                                state.userMovedMap = true;
-                            });
-                            state.mapInitialised = true;
-                            log('Map initialised');
+                    // Position provider with GPS + IP fallback
+                    class PositionProvider {
+                        constructor() {
+                            this.hasGps = !!navigator.geolocation;
+                            this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
                         }
 
-                        // Push a GPS fix to the map WITHOUT auto-panning unless the
-                        // user has never moved the map (first fix centres the view once).
-                        function pushToMap(lat, lng, firstFix) {
-                            if (!liveMap) initLiveMap();
-                            if (!liveMap) return;
-
-                            livePath.push([lat, lng]);
-
-                            if (livePolyline) {
-                                livePolyline.addLatLng([lat, lng]);
-                            } else {
-                                livePolyline = L.polyline(livePath, { color: '#3b82f6', weight: 4 }).addTo(liveMap);
-                            }
-
-                            if (!liveMarker) {
-                                liveMarker = L.circleMarker([lat, lng], {
-                                    radius: 10, color: '#fff', fillColor: '#ef4444', fillOpacity: 1, weight: 3,
-                                }).addTo(liveMap);
-                            } else {
-                                liveMarker.setLatLng([lat, lng]);
-                            }
-
-                            // Only auto-pan on the very first GPS fix (centres the map),
-                            // never again unless the user explicitly resets.
-                            if (firstFix && !state.userMovedMap) {
-                                liveMap.setView([lat, lng], 16, { animate: true });
-                                log('First fix — map centred on salesperson at zoom 16');
-                            }
-
-                            setTimeout(() => liveMap.invalidateSize(), 100);
-                        }
-
-                        // ── Helpers ───────────────────────────────────────────
-                        const formatDuration = ms => {
-                            const s = Math.floor(ms / 1000);
-                            return `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
-                        };
-
-                        const updateStatusMessage = (message, type = 'info') => {
-                            const msgDiv    = $('statusMessage');
-                            const statusText = $('statusText');
-                            const statusDot  = $('statusDot');
-                            if (!msgDiv || !statusText) return;
-                            statusText.textContent = message;
-                            msgDiv.className = 'status-message ' + type;
-                            if (statusDot) {
-                                statusDot.className = 'status-dot ' + (state.tracking ? 'live' : 'offline');  // offline when stopped
-                            }
-                        };
-
-                        const setStartBtn = disabled => { const b = $('startButton'); if (b) b.disabled = disabled; };
-                        const setStopBtn  = disabled => { const b = $('stopButton');  if (b) b.disabled = disabled; };
-
-                        const postJson = async (url, payload) => {
-                            const res = await fetch(url, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(payload || {}),
-                                credentials: 'same-origin',
-                                keepalive: true,
-                            });
-                            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                            return res.json();
-                        };
-
-                        const haversine = (lat1, lon1, lat2, lon2) => {
-                            const R = 6371, dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
-                            const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
-                            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-                        };
-
-                        // ══════════════════════════════════════════════════════
-                        // GPS ARCHITECTURE — watchPosition + setInterval POST
-                        // ──────────────────────────────────────────────────────
-                        // watchPosition keeps ONE persistent OS-level GPS listener.
-                        // The OS pushes fresh coordinates whenever the hardware has
-                        // them — no per-tick request, no overlapping calls, no
-                        // timeout chain that can break after N readings.
-                        //
-                        // A separate setInterval fires every 2 s and POSTs the
-                        // LATEST position the watcher has buffered (latestPos).
-                        // If the phone is stationary the same coordinates are
-                        // re-posted every tick — that is intentional: the server
-                        // still writes a log row so the "last seen" stays fresh.
-                        //
-                        // Geocoding runs every 30 s via /geocode, fully separate.
-                        // ══════════════════════════════════════════════════════
-
-                        let latestPos       = null;   // most recent GeolocationPosition
-                        let watchId         = null;   // navigator.geolocation.watchPosition handle
-                        let sendIntervalId  = null;   // setInterval for POST every 2 s
-                        let geocodeIntervalId = null;
-                        let lastGeocodeLat  = null;
-                        let lastGeocodeLng  = null;
-
-                        // ── watchPosition callbacks ───────────────────────────
-                        function onGpsSuccess(pos) {
-                            latestPos = pos;
-                            log('watchPosition: lat=%.6f lng=%.6f acc=%.1fm',
-                                pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
-                            if ($('accuracyValue'))
-                                $('accuracyValue').textContent = pos.coords.accuracy.toFixed(1) + ' m';
-                        }
-
-                        function onGpsError(geoErr) {
-                            const msgs = {
-                                1: 'Location access denied — enable GPS in browser settings.',
-                                2: 'GPS signal unavailable.',
-                                3: 'GPS timeout — retrying.',
-                            };
-                            const msg = msgs[geoErr.code] || ('GPS error: ' + geoErr.message);
-                            warn('watchPosition error code=%d: %s', geoErr.code, msg);
-                            updateStatusMessage(msg, 'error');
-                            // code 3 (timeout) is non-fatal — watchPosition retries automatically.
-                            // code 1 (denied) is fatal — nothing we can do without user action.
-                        }
-
-                        // ── POST tick — fires every 2 s via setInterval ───────
-                        async function doTick() {
-                            if (!state.tracking || !isOwner) return;
-                            if (!latestPos) {
-                                log('doTick: no GPS fix yet — waiting');
-                                return;
-                            }
-
-                            const lat = latestPos.coords.latitude;
-                            const lng = latestPos.coords.longitude;
-                            const acc = latestPos.coords.accuracy;
-
-                            const isFirst = state.lastLat === null;
-                            let tickDelta = 0;
-                            if (!isFirst)
-                                tickDelta = haversine(state.lastLat, state.lastLng, lat, lng);
-                            state.totalDistance += tickDelta;
-                            state.lastLat = lat;
-                            state.lastLng = lng;
-
-                            try {
-                                const result = await postJson('/salesperson_tracking/update', {
-                                    latitude:   lat,
-                                    longitude:  lng,
-                                    accuracy:   acc,
-                                    distance:   tickDelta,
-                                    tracker_id: trackerId,
-                                });
-                                state.consecutiveErrors = 0;
-
-                                if ($('latitudeValue'))  $('latitudeValue').textContent  = lat.toFixed(6);
-                                if ($('longitudeValue')) $('longitudeValue').textContent = lng.toFixed(6);
-                                if ($('lastSeenValue'))  $('lastSeenValue').textContent  = result.last_seen || new Date().toLocaleTimeString();
-                                if ($('kpiDistance') && result.total_distance_km != null)
-                                    $('kpiDistance').textContent = parseFloat(result.total_distance_km).toFixed(1);
-                                if ($('logCount') && result.total_logs != null)
-                                    $('logCount').textContent = result.total_logs;
-
-                                pushToMap(lat, lng, isFirst);
-                                updateStatusMessage('Tracking Active — updating every 2 seconds', 'info');
-
-                            } catch(e) {
-                                state.consecutiveErrors++;
-                                err('doTick POST error (%d): %s', state.consecutiveErrors, e.message);
-                                updateStatusMessage('Network error — will retry next tick', 'error');
-                                // Never stop the interval on network errors — just keep retrying.
-                            }
-                        }
-
-                        function startSendInterval() {
-                            if (sendIntervalId !== null) return;
-                            sendIntervalId = setInterval(doTick, 2000);
-                            doTick();   // fire immediately without waiting 2 s
-                            log('sendInterval started (every 2 s)');
-
-                            // Geocode every 30 s
-                            geocodeIntervalId = setInterval(async () => {
-                                if (!state.tracking || state.lastLat === null) return;
-                                if (Math.abs(state.lastLat - (lastGeocodeLat || 0)) < 0.0005 &&
-                                    Math.abs(state.lastLng - (lastGeocodeLng || 0)) < 0.0005 &&
-                                    lastGeocodeLat !== null) return;
-                                lastGeocodeLat = state.lastLat;
-                                lastGeocodeLng = state.lastLng;
+                        async getPosition() {
+                            if (this.hasGps) {
                                 try {
-                                    const r = await postJson('/salesperson_tracking/geocode', {
-                                        latitude: state.lastLat, longitude: state.lastLng,
-                                        tracker_id: trackerId,
-                                    });
-                                    if (r.ok && r.location_name && $('locationNameValue'))
-                                        $('locationNameValue').textContent = r.location_name;
-                                } catch(e) { warn('geocode error:', e); }
-                            }, 30000);
-                        }
-
-                        function stopSendInterval() {
-                            if (sendIntervalId !== null) {
-                                clearInterval(sendIntervalId);
-                                sendIntervalId = null;
-                            }
-                            if (geocodeIntervalId !== null) {
-                                clearInterval(geocodeIntervalId);
-                                geocodeIntervalId = null;
-                            }
-                            log('sendInterval stopped');
-                        }
-
-                        function startWatchingPosition() {
-                            if (watchId !== null) return;
-                            latestPos = null;
-                            watchId = navigator.geolocation.watchPosition(
-                                onGpsSuccess,
-                                onGpsError,
-                                { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
-                            );
-                            log('watchPosition started (watchId=%d)', watchId);
-                        }
-
-                        function stopWatchingPosition() {
-                            if (watchId !== null) {
-                                navigator.geolocation.clearWatch(watchId);
-                                watchId   = null;
-                                latestPos = null;
-                                log('watchPosition cleared');
-                            }
-                        }
-
-                        const tickTimer = () => {
-                            const el = $('takingTimeValue');
-                            if (el && state.trackingStart)
-                                el.textContent = formatDuration(Date.now() - state.trackingStart);
-                        };
-
-                        // ── Apply server state to this tab's UI ───────────────
-                        // Called both on initial load and after every status poll.
-                        function applyServerState(serverIsTracking, firstLoad) {
-                            const wasTracking = state.tracking;
-                            state.tracking = serverIsTracking;
-
-                            if (serverIsTracking && !wasTracking && !firstLoad) {
-                                // Server flipped ON while page was open (another tab started) — sync UI
-                                log('applyServerState: sync ON');
-                                setStartBtn(true);
-                                setStopBtn(false);
-                                if (!state.timerIntervalId) {
-                                    state.trackingStart = state.trackingStart || Date.now();
-                                    state.timerIntervalId = setInterval(tickTimer, 1000);
+                                    return await this._getGpsPosition();
+                                } catch (e) {
+                                    console.warn('GPS failed, trying IP fallback:', e.message);
                                 }
-                                // Do NOT start GPS here for cross-tab sync — only the tab that pressed Start owns GPS.
-                                updateStatusMessage('Tracking Active — Location updates every 2 seconds', 'info');
-
-                            } else if (!serverIsTracking && wasTracking) {
-                                // Server says tracking is OFF — sync this tab (another tab stopped it)
-                                log('applyServerState: sync OFF (firstLoad=%s)', firstLoad);
-                                setStartBtn(false);
-                                setStopBtn(true);
-                                clearInterval(state.timerIntervalId);
-                                state.timerIntervalId = null;
-                                state.trackingStart = null;
-                                if (isOwner) { stopWatchingPosition(); stopSendInterval(); }
-                                updateStatusMessage('Offline — Press Start to begin tracking', 'warning');
-
-                            } else if (firstLoad && serverIsTracking) {
-                                // Page opened while tracking already active in another tab/device.
-                                // Show active UI but NEVER auto-start GPS — only the original tab sends.
-                                log('applyServerState: firstLoad already-active — UI-only, no GPS');
-                                setStartBtn(true);
-                                setStopBtn(false);
-                                if (!state.timerIntervalId) {
-                                    state.trackingStart = Date.now();
-                                    state.timerIntervalId = setInterval(tickTimer, 1000);
-                                }
-                                updateStatusMessage('Tracking Active (another session running) — Location updates every 2 seconds', 'info');
-                                initLiveMap();
-
-                            } else if (firstLoad && !serverIsTracking) {
-                                // Fresh page load, not tracking → show clean state
-                                log('applyServerState: initial clean state');
-                                setStartBtn(false);
-                                setStopBtn(true);
-                                updateStatusMessage('Ready — Press Start to begin tracking', 'info');
-                                initLiveMap();
                             }
+                            return await this._getIpPosition();
                         }
 
-                        // ── Cross-tab status polling ──────────────────────────
-                        // Polls every 2 s (tracking) / 5 s (idle).
-                        // If any tab calls Stop, all tabs detect the change here and halt GPS.
-                        async function pollStatus() {
-                            try {
-                                const res  = await fetch(`/salesperson_tracking/status/${trackerId}`);
-                                if (!res.ok) return;
-                                const data = await res.json();
-                                if (!data.ok) return;
+                        _getGpsPosition() {
+                            return new Promise((resolve, reject) => {
+                                const timeout = setTimeout(() => reject(new Error('GPS timeout')), 10000);
+                                navigator.geolocation.getCurrentPosition(
+                                    (pos) => { clearTimeout(timeout); resolve(pos); },
+                                    (err) => { clearTimeout(timeout); reject(err); },
+                                    { enableHighAccuracy: this.isMobile, timeout: 10000, maximumAge: 5000 }
+                                );
+                            });
+                        }
 
-                                log('pollStatus: is_tracking=%s status=%s', data.is_tracking, data.status);
-
-                                applyServerState(data.is_tracking, false);
-
-                                // Update last-seen and location name shown on manager view
-                                if (!isOwner) {
-                                    if (data.last_seen    && $('lastSeenValue'))    $('lastSeenValue').textContent    = data.last_seen;
-                                    if (data.location_name && $('locationNameValue')) $('locationNameValue').textContent = data.location_name;
-                                    if (data.last_lat && data.last_lng) {
-                                        if ($('latitudeValue'))  $('latitudeValue').textContent  = parseFloat(data.last_lat).toFixed(6);
-                                        if ($('longitudeValue')) $('longitudeValue').textContent = parseFloat(data.last_lng).toFixed(6);
+                        async _getIpPosition() {
+                            const services = [
+                                'https://ipapi.co/json/',
+                                'https://ipwho.is/'
+                            ];
+                            for (const url of services) {
+                                try {
+                                    const res = await fetch(url);
+                                    const data = await res.json();
+                                    if (data.latitude && data.longitude) {
+                                        return {
+                                            coords: {
+                                                latitude: data.latitude,
+                                                longitude: data.longitude,
+                                                accuracy: 5000,
+                                                timestamp: Date.now()
+                                            }
+                                        };
                                     }
-                                }
-                            } catch(e) { warn('pollStatus error:', e); }
-                        }
-
-                        function schedulePollStatus() {
-                            // While tracking: poll every 10 s (only need to detect
-                            // stop from another tab — doTick handles the real work).
-                            // While stopped: poll every 5 s to detect start quickly.
-                            const interval = state.tracking ? 10000 : 5000;
-                            setTimeout(async () => { await pollStatus(); schedulePollStatus(); }, interval);
-                        }
-
-                        // Heartbeat replaced by sendTick (runs every 2 s)
-
-                        // ── Start button ──────────────────────────────────────
-                        const startTracking = async () => {
-                            if (state.tracking) { log('startTracking: already tracking — ignored'); return; }
-                            if (!navigator.geolocation) { updateStatusMessage('Geolocation not supported', 'error'); return; }
-
-                            log('startTracking: calling /start');
-                            setStartBtn(true);
-                            updateStatusMessage('Starting…', 'info');
-                            try {
-                                const result = await postJson('/salesperson_tracking/start', { tracker_id: trackerId });
-                                if (!result.ok) { warn('start failed:', result.error); setStartBtn(false); return; }
-                                log('startTracking: server responded ok, already_active=%s', result.already_active);
-                                state.trackingStart = Date.now();
-                                applyServerState(true, false);
-                                // This tab pressed Start — it owns GPS sending
-                                startWatchingPosition();
-                                startSendInterval();
-                            } catch(e) {
-                                err('startTracking error:', e);
-                                setStartBtn(false);
-                                updateStatusMessage('Failed to start: ' + e.message, 'error');
+                                } catch (e) {}
                             }
-                        };
-
-                        // ── Stop button ───────────────────────────────────────
-                        const stopTracking = async () => {
-                            if (!state.tracking) { log('stopTracking: not tracking — ignored'); return; }
-
-                            log('stopTracking: calling /stop');
-                            setStopBtn(true);
-                            try {
-                                await postJson('/salesperson_tracking/stop', { tracker_id: trackerId });
-                                log('stopTracking: server responded ok');
-                                stopWatchingPosition();
-                                stopSendInterval();
-                                clearInterval(state.timerIntervalId);
-                                state.timerIntervalId = null;
-                                state.trackingStart = null;
-                                state.lastLat = state.lastLng = null;
-                                state.tracking = false;
-                                setStartBtn(false);
-                                setStopBtn(true);
-                                updateStatusMessage('Offline — Press Start to begin tracking', 'warning');
-                            } catch(e) {
-                                err('stopTracking error:', e);
-                                setStopBtn(false);
-                                updateStatusMessage('Failed to stop: ' + e.message, 'error');
-                            }
-                        };
-
-                        // ── Camera ────────────────────────────────────────────
-                        const cameraOverlay = $('cameraOverlay');
-                        const selfieVideo   = $('selfieVideo');
-                        const selfieCanvas  = $('selfieCanvas');
-                        let stream = null;
-
-                        async function openCamera() {
-                            try {
-                                stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                                selfieVideo.srcObject = stream;
-                                cameraOverlay.style.display = 'flex';
-                            } catch(e) { updateStatusMessage('Camera access denied', 'error'); }
+                            throw new Error('No position available');
                         }
-                        function closeCamera() {
-                            if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-                            cameraOverlay.style.display = 'none';
-                        }
-                        async function capturePhoto() {
-                            const ctx = selfieCanvas.getContext('2d');
-                            selfieCanvas.width  = selfieVideo.videoWidth;
-                            selfieCanvas.height = selfieVideo.videoHeight;
-                            ctx.drawImage(selfieVideo, 0, 0);
-                            const imageData = selfieCanvas.toDataURL('image/jpeg', 0.8);
-                            try {
-                                const r = await fetch('/salesperson_tracking/save_photo', {
-                                    method: 'POST', credentials: 'same-origin',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ image_data: imageData, filename: `photo_${Date.now()}.jpg` }),
-                                });
-                                const res = await r.json();
-                                if (res.ok) {
-                                    const n = $('snapNotification');
-                                    if (n) { n.style.display = 'block'; setTimeout(() => { n.style.display = 'none'; }, 2000); }
-                                    closeCamera();
-                                }
-                            } catch(e) { updateStatusMessage('Failed to save photo', 'error'); }
-                        }
+                    }
 
-                        // ── Manager polling (live location view) ──────────────
-                        const pollManagerView = async () => {
-                            if (isOwner) return;
-                            try {
-                                const res  = await fetch('/salesperson_tracking/moving_map_data/' + trackerId);
-                                const data = await res.json();
-                                if (!data.ok || !data.points || !data.points.length) return;
+                    const provider = new PositionProvider();
 
-                                if (!liveMap) initLiveMap();
-                                if (livePolyline) { liveMap.removeLayer(livePolyline); livePolyline = null; }
-                                if (liveMarker)   { liveMap.removeLayer(liveMarker);   liveMarker   = null; }
+                    // Helper functions
+                    const haversine = (lat1, lon1, lat2, lon2) => {
+                        const R = 6371, dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
+                        const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+                        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                    };
 
-                                livePath = data.points.map(p => [p.lat, p.lng]);
-                                if (livePath.length > 1)
-                                    livePolyline = L.polyline(livePath, { color: '#3b82f6', weight: 4 }).addTo(liveMap);
+                    const postJson = async (url, payload) => {
+                        const res = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload || {}),
+                            credentials: 'same-origin',
+                        });
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        return res.json();
+                    };
 
-                                const last = data.points[data.points.length - 1];
-                                liveMarker = L.circleMarker([last.lat, last.lng], {
-                                    radius: 10, color: '#fff', fillColor: '#ef4444', fillOpacity: 1, weight: 3,
-                                }).bindTooltip(data.last_seen || '').addTo(liveMap);
+                    const formatDuration = ms => {
+                        const s = Math.floor(ms / 1000);
+                        return `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
+                    };
 
-                                // No auto-pan; manager controls their own view
-                                setTimeout(() => liveMap.invalidateSize(), 100);
+                    const updateStatus = (message, type = 'info') => {
+                        const statusText = document.getElementById('statusText');
+                        const msgDiv = document.getElementById('statusMessage');
+                        const statusDot = document.getElementById('statusDot');
+                        if (statusText) statusText.textContent = message;
+                        if (msgDiv) msgDiv.className = 'status-message ' + type;
+                        if (statusDot) statusDot.className = 'status-dot ' + (state.tracking ? 'live' : 'offline');
+                    };
 
-                                if ($('latitudeValue'))  $('latitudeValue').textContent  = parseFloat(last.lat).toFixed(6);
-                                if ($('longitudeValue')) $('longitudeValue').textContent = parseFloat(last.lng).toFixed(6);
-                                if ($('kpiDistance') && data.total_distance_km != null)
-                                    $('kpiDistance').textContent = parseFloat(data.total_distance_km).toFixed(1);
-                            } catch(e) { warn('pollManagerView error:', e); }
-                        };
+                    // Map
+                    let liveMap = null, liveMarker = null, livePolyline = null, livePath = [];
 
-                        // ── Boot ──────────────────────────────────────────────
-                        // /live is always the current user's own page → isOwner always true.
-                        const serverIsTracking = root.dataset.isTracking === '1';
-                        const lastSeenTs       = parseInt(root.dataset.lastSeenTs || '0', 10);
-                        log('Boot: isOwner=%s trackerId=%s serverIsTracking=%s lastSeenTs=%s',
-                            isOwner, trackerId, serverIsTracking, lastSeenTs);
+                    function initMap() {
+                        if (state.mapInitialised || typeof L === 'undefined') return;
+                        const el = document.getElementById('liveMap');
+                        if (!el) return;
+                        liveMap = L.map('liveMap', { zoomControl: true }).setView([23.7701, 90.4254], 14);
+                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            attribution: '', maxZoom: 19,
+                        }).addTo(liveMap);
+                        liveMap.on('dragstart zoomstart zoom', () => { state.userMovedMap = true; });
+                        state.mapInitialised = true;
+                    }
 
-                        const startBtn       = $('startButton');
-                        const stopBtn        = $('stopButton');
-                        const openCameraBtn  = $('openCameraBtn');
-                        const captureBtn     = $('captureBtn');
-                        const closeCameraBtn = $('closeCameraBtn');
-
-                        if (startBtn)       startBtn.addEventListener('click', startTracking);
-                        if (stopBtn)        stopBtn.addEventListener('click', stopTracking);
-                        if (openCameraBtn)  openCameraBtn.addEventListener('click', openCamera);
-                        if (captureBtn)     captureBtn.addEventListener('click', capturePhoto);
-                        if (closeCameraBtn) closeCameraBtn.addEventListener('click', closeCamera);
-
-                        // ── Stale-session reset ───────────────────────────────
-                        // If the tracker is marked active but last_seen is >10 min ago,
-                        // the previous session crashed without stopping. Auto-reset it
-                        // so this page load starts clean (not "already tracking").
-                        const STALE_MS = 10 * 60 * 1000;
-                        const isStale  = serverIsTracking && lastSeenTs > 0
-                                      && (Date.now() - lastSeenTs * 1000) > STALE_MS;
-                        if (isStale) {
-                            log('Boot: stale session detected — auto-stopping');
-                            postJson('/salesperson_tracking/stop', { tracker_id: trackerId })
-                                .catch(e => warn('stale stop error:', e));
-                            applyServerState(false, true);
+                    function updateMap(lat, lng, firstFix) {
+                        if (!liveMap) initMap();
+                        if (!liveMap) return;
+                        livePath.push([lat, lng]);
+                        if (livePolyline) {
+                            livePolyline.addLatLng([lat, lng]);
                         } else {
-                            // NEVER auto-start GPS — only start when user clicks Start.
-                            applyServerState(serverIsTracking, true);
+                            livePolyline = L.polyline(livePath, { color: '#3b82f6', weight: 4 }).addTo(liveMap);
                         }
+                        if (!liveMarker) {
+                            liveMarker = L.circleMarker([lat, lng], {
+                                radius: 10, color: '#fff', fillColor: '#ef4444', fillOpacity: 1, weight: 3,
+                            }).addTo(liveMap);
+                        } else {
+                            liveMarker.setLatLng([lat, lng]);
+                        }
+                        if (firstFix && !state.userMovedMap) {
+                            liveMap.setView([lat, lng], 16, { animate: true });
+                        }
+                        setTimeout(() => liveMap.invalidateSize(), 100);
+                    }
 
-                        // Cross-tab sync polling
-                        schedulePollStatus();
-                    })();
+                    // Send position to server
+                    async function sendPosition(position, firstFix) {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        const acc = position.coords.accuracy || 0;
+
+                        let delta = 0;
+                        if (state.lastLat !== null) {
+                            delta = haversine(state.lastLat, state.lastLng, lat, lng);
+                        }
+                        state.totalDistance += delta;
+                        state.lastLat = lat;
+                        state.lastLng = lng;
+
+                        try {
+                            const res = await postJson('/salesperson_tracking/update', {
+                                latitude: lat, longitude: lng, accuracy: acc,
+                                distance: delta, tracker_id: trackerId,
+                            });
+
+                            const updateEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+                            updateEl('latitudeValue', lat.toFixed(6));
+                            updateEl('longitudeValue', lng.toFixed(6));
+                            updateEl('lastSeenValue', res.last_seen || new Date().toLocaleTimeString());
+                            updateEl('accuracyValue', acc.toFixed(1) + ' m');
+                            if (res.total_distance_km != null) updateEl('kpiDistance', parseFloat(res.total_distance_km).toFixed(1));
+                            if (res.location_name && document.getElementById('locationNameValue'))
+                                document.getElementById('locationNameValue').textContent = res.location_name;
+
+                            updateMap(lat, lng, firstFix);
+                            updateStatus('Tracking Active', 'info');
+                        } catch (e) {
+                            console.error('Send failed:', e);
+                            updateStatus('Network error - retrying', 'error');
+                        }
+                    }
+
+                    // Main tracking loop
+                    async function doTick() {
+                        if (!state.tracking || !isOwner) return;
+                        try {
+                            const pos = await provider.getPosition();
+                            await sendPosition(pos, state.lastLat === null);
+                        } catch (e) {
+                            updateStatus(`Location error: ${e.message}`, 'error');
+                        }
+                    }
+
+                    function startLoop() {
+                        if (state.sendIntervalId) return;
+                        state.sendIntervalId = setInterval(doTick, 2000);
+                        doTick();
+                    }
+
+                    function stopLoop() {
+                        if (state.sendIntervalId) {
+                            clearInterval(state.sendIntervalId);
+                            state.sendIntervalId = null;
+                        }
+                    }
+
+                    const tickTimer = () => {
+                        const el = document.getElementById('takingTimeValue');
+                        if (el && state.trackingStart) el.textContent = formatDuration(Date.now() - state.trackingStart);
+                    };
+
+                    // Start/Stop handlers
+                    async function startTracking() {
+                        if (state.tracking) return;
+                        updateStatus('Starting...', 'info');
+                        document.getElementById('startButton').disabled = true;
+                        try {
+                            const result = await postJson('/salesperson_tracking/start', { tracker_id: trackerId });
+                            if (!result.ok) throw new Error(result.error);
+                            state.tracking = true;
+                            state.trackingStart = Date.now();
+                            if (!state.timerIntervalId) state.timerIntervalId = setInterval(tickTimer, 1000);
+                            startLoop();
+                            document.getElementById('stopButton').disabled = false;
+                            updateStatus('Tracking Active', 'info');
+                        } catch (e) {
+                            updateStatus(`Failed: ${e.message}`, 'error');
+                        }
+                        document.getElementById('startButton').disabled = false;
+                    }
+
+                    async function stopTracking() {
+                        if (!state.tracking) return;
+                        updateStatus('Stopping...', 'info');
+                        document.getElementById('stopButton').disabled = true;
+                        try {
+                            await postJson('/salesperson_tracking/stop', { tracker_id: trackerId });
+                            state.tracking = false;
+                            if (state.timerIntervalId) clearInterval(state.timerIntervalId);
+                            state.timerIntervalId = null;
+                            state.trackingStart = null;
+                            stopLoop();
+                            document.getElementById('startButton').disabled = false;
+                            updateStatus('Offline - Press Start', 'warning');
+                        } catch (e) {
+                            updateStatus(`Failed: ${e.message}`, 'error');
+                        }
+                        document.getElementById('stopButton').disabled = false;
+                    }
+
+                    // Cross-tab sync
+                    async function pollStatus() {
+                        try {
+                            const res = await fetch(`/salesperson_tracking/status/${trackerId}`);
+                            if (!res.ok) return;
+                            const data = await res.json();
+                            if (!data.ok) return;
+                            
+                            if (data.is_tracking !== state.tracking && isOwner) {
+                                if (data.is_tracking) {
+                                    state.tracking = true;
+                                    state.trackingStart = Date.now();
+                                    if (!state.timerIntervalId) state.timerIntervalId = setInterval(tickTimer, 1000);
+                                    startLoop();
+                                    document.getElementById('startButton').disabled = true;
+                                    document.getElementById('stopButton').disabled = false;
+                                } else {
+                                    state.tracking = false;
+                                    if (state.timerIntervalId) clearInterval(state.timerIntervalId);
+                                    state.timerIntervalId = null;
+                                    stopLoop();
+                                    document.getElementById('startButton').disabled = false;
+                                    document.getElementById('stopButton').disabled = true;
+                                }
+                                updateStatus(state.tracking ? 'Tracking Active' : 'Offline', state.tracking ? 'info' : 'warning');
+                            }
+                            
+                            if (!isOwner && data.last_lat && data.last_lng) {
+                                updateMap(data.last_lat, data.last_lng, !state.mapInitialised);
+                                if (data.last_seen) document.getElementById('lastSeenValue').textContent = data.last_seen;
+                                if (data.location_name) document.getElementById('locationNameValue').textContent = data.location_name;
+                                document.getElementById('latitudeValue').textContent = data.last_lat.toFixed(6);
+                                document.getElementById('longitudeValue').textContent = data.last_lng.toFixed(6);
+                            }
+                        } catch (e) {}
+                    }
+
+                    function schedulePoll() {
+                        setTimeout(async () => { await pollStatus(); schedulePoll(); }, 5000);
+                    }
+
+                    // Camera
+                    let stream = null;
+                    const cameraOverlay = document.getElementById('cameraOverlay');
+                    const selfieVideo = document.getElementById('selfieVideo');
+                    const selfieCanvas = document.getElementById('selfieCanvas');
+
+                    async function openCamera() {
+                        try {
+                            stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                            selfieVideo.srcObject = stream;
+                            cameraOverlay.style.display = 'flex';
+                        } catch (e) { updateStatus('Camera access denied', 'error'); }
+                    }
+
+                    function closeCamera() {
+                        if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+                        cameraOverlay.style.display = 'none';
+                    }
+
+                    async function capturePhoto() {
+                        const ctx = selfieCanvas.getContext('2d');
+                        selfieCanvas.width = selfieVideo.videoWidth;
+                        selfieCanvas.height = selfieVideo.videoHeight;
+                        ctx.drawImage(selfieVideo, 0, 0);
+                        const imageData = selfieCanvas.toDataURL('image/jpeg', 0.8);
+                        try {
+                            const res = await fetch('/salesperson_tracking/save_photo', {
+                                method: 'POST', credentials: 'same-origin',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ image_data: imageData, filename: `photo_${Date.now()}.jpg` }),
+                            });
+                            const data = await res.json();
+                            if (data.ok) {
+                                const n = document.getElementById('snapNotification');
+                                if (n) { n.style.display = 'block'; setTimeout(() => { n.style.display = 'none'; }, 2000); }
+                                closeCamera();
+                            }
+                        } catch (e) { updateStatus('Failed to save photo', 'error'); }
+                    }
+
+                    // Initialize
+                    initMap();
+
+                    if (state.tracking && isOwner) {
+                        state.trackingStart = Date.now();
+                        state.timerIntervalId = setInterval(tickTimer, 1000);
+                        startLoop();
+                        document.getElementById('startButton').disabled = true;
+                        document.getElementById('stopButton').disabled = false;
+                    } else {
+                        document.getElementById('startButton').disabled = false;
+                        document.getElementById('stopButton').disabled = true;
+                    }
+
+                    document.getElementById('startButton')?.addEventListener('click', startTracking);
+                    document.getElementById('stopButton')?.addEventListener('click', stopTracking);
+                    document.getElementById('openCameraBtn')?.addEventListener('click', openCamera);
+                    document.getElementById('captureBtn')?.addEventListener('click', capturePhoto);
+                    document.getElementById('closeCameraBtn')?.addEventListener('click', closeCamera);
+
+                    schedulePoll();
+                })();
                 ]]>
                 </script>
             </body>
@@ -1039,7 +564,8 @@
             <head>
                 <meta charset="utf-8"/>
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-                <title>Moving Map — <t t-out="tracker.user_id.name"/></title>
+                <title>Moving Map — <t t-out="tracker.user_id.name"/>
+                </title>
                 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"/>
                 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
                 <style>
@@ -1070,54 +596,73 @@
                 </style>
             </head>
             <body>
-                <div id="mapRoot"
-                     t-att-data-points="points_b64"
-                     t-att-data-customers="customers_b64"
-                     t-att-data-status="tracking_status"
-                     t-att-data-tracker-id="tracker_id"
-                     style="display:none"/>
+                <div id="mapRoot" t-att-data-points="points_b64" t-att-data-customers="customers_b64" t-att-data-status="tracking_status" t-att-data-tracker-id="tracker_id" style="display:none"/>
 
                 <div class="top-bar">
                     <div class="top-bar-left">
                         <div>
-                            <h1><t t-out="tracker.user_id.name"/> — Movement Map</h1>
-                            <div style="font-size:12px;color:#64748b;"><t t-out="tracker.sale_team_id.name or 'No team'"/></div>
+                            <h1>
+                                <t t-out="tracker.user_id.name"/>
+ — Movement Map</h1>
+                            <div style="font-size:12px;color:#64748b;">
+                                <t t-out="tracker.sale_team_id.name or 'No team'"/>
+                            </div>
                         </div>
                     </div>
                     <div class="meta-pills">
                         <div id="statusBadge" t-attf-class="status-pill {tracking_status}">
                             <span t-attf-class="status-dot {tracking_status}"/>
-                            <span id="statusLabel"><t t-out="tracker.tracking_status_label"/></span>
+                            <span id="statusLabel">
+                                <t t-out="tracker.tracking_status_label"/>
+                            </span>
                         </div>
-                        <div class="meta-pill">Logs: <b id="logCount"><t t-out="total_logs"/></b></div>
-                        <div class="meta-pill">Last seen: <b><t t-out="last_seen_display or '—'"/></b></div>
+                        <div class="meta-pill">Logs: <b id="logCount">
+                            <t t-out="total_logs"/>
+                        </b>
                     </div>
+                    <div class="meta-pill">Last seen: <b>
+                        <t t-out="last_seen_display or '—'"/>
+                    </b>
                 </div>
+            </div>
+        </div>
 
-                <div class="map-wrapper">
-                    <div id="map"/>
-                    <div class="route-info" id="routeInfo">
-                        <div class="route-stat">
-                            <span class="route-stat-val" id="distanceVal">— km</span>
-                            <span class="route-stat-lbl">Distance</span>
-                        </div>
-                        <div class="route-stat">
-                            <span class="route-stat-val" id="pointsVal">0</span>
-                            <span class="route-stat-lbl">Points</span>
-                        </div>
-                    </div>
-                    <div class="legend">
-                        <div class="legend-row"><span class="legend-line" style="background:#3b82f6;"/>GPS path</div>
-                        <div class="legend-row"><span class="legend-line" style="background:none;border-top:2px dashed #6366f1;"/>Reconnect (OSRM)</div>
-                        <div class="legend-row"><span class="legend-dot" style="background:#22c55e;"/> Current pos (live)</div>
-                        <div class="legend-row"><span class="legend-dot" style="background:#ef4444;"/> Last pos (offline)</div>
-                        <div class="legend-row"><span class="legend-dot" style="background:#3b82f6;"/> Planned customer</div>
-                        <div class="legend-row"><span class="legend-dot" style="background:#15803d;"/> Visited customer</div>
-                    </div>
+        <div class="map-wrapper">
+            <div id="map"/>
+            <div class="route-info" id="routeInfo">
+                <div class="route-stat">
+                    <span class="route-stat-val" id="distanceVal">— km</span>
+                    <span class="route-stat-lbl">Distance</span>
                 </div>
+                <div class="route-stat">
+                    <span class="route-stat-val" id="pointsVal">0</span>
+                    <span class="route-stat-lbl">Points</span>
+                </div>
+            </div>
+            <div class="legend">
+                <div class="legend-row">
+                    <span class="legend-line" style="background:#3b82f6;"/>
+GPS path</div>
+                <div class="legend-row">
+                    <span class="legend-line" style="background:none;border-top:2px dashed #6366f1;"/>
+Reconnect (OSRM)</div>
+                <div class="legend-row">
+                    <span class="legend-dot" style="background:#22c55e;"/>
+ Current pos (live)</div>
+                <div class="legend-row">
+                    <span class="legend-dot" style="background:#ef4444;"/>
+ Last pos (offline)</div>
+                <div class="legend-row">
+                    <span class="legend-dot" style="background:#3b82f6;"/>
+ Planned customer</div>
+                <div class="legend-row">
+                    <span class="legend-dot" style="background:#15803d;"/>
+ Visited customer</div>
+            </div>
+        </div>
 
-                <script>
-                <![CDATA[
+        <script>
+            <![CDATA[
                 (function() {
                     'use strict';
 
@@ -1215,7 +760,7 @@
                         return [fromPt, toPt];
                     }
 
-                    const GAP_SECONDS = 3600;
+                    const GAP_SECONDS = 120;
 
                     function splitIntoSegments(pts) {
                         if (!pts.length) return [];
@@ -1395,9 +940,9 @@
 
                 })();
                 ]]>
-                </script>
-            </body>
-        </html>
-    </template>
+        </script>
+    </body>
+</html>
+</template>
 
 </odoo>
