@@ -702,6 +702,8 @@
                                 if ($('lastSeenValue'))  $('lastSeenValue').textContent  = result.last_seen || new Date().toLocaleTimeString();
                                 if ($('kpiDistance') && result.total_distance_km != null)
                                     $('kpiDistance').textContent = parseFloat(result.total_distance_km).toFixed(1);
+                                if ($('logCount') && result.total_logs != null)
+                                    $('logCount').textContent = result.total_logs;
 
                                 pushToMap(lat, lng, isFirst);
                                 updateStatusMessage('Tracking Active — updating every 2 seconds', 'info');
@@ -1341,20 +1343,15 @@
                     renderCustomers(customers);
                     renderPath(points, isLiveInit);
 
-                    // ── Fix 4: Live polling — incremental cursor-based fetch ────
-                    // After initial load we only fetch points with id > lastKnownId.
-                    // This keeps each poll O(1) regardless of how many total logs exist,
-                    // so tracking works correctly for 1 hour (1500 logs) or more.
-                    let lastKnownId   = points.length ? Math.max(...points.map(p => p.id || 0)) : 0;
-                    let currentStatus = initStatus;
-                    let currentIsLive = isLiveInit;
-                    let pollErrors    = 0;
+                    // ── Fix 4: Live polling — re-render on every new point ────
+                    let knownPointCount = points.length;
+                    let currentStatus   = initStatus;
+                    let currentIsLive   = isLiveInit;
+                    let pollErrors      = 0;
 
                     async function pollMap() {
                         try {
-                            const url = `/salesperson_tracking/moving_map_data/${trackerId}`
-                                      + (lastKnownId ? `?after_id=${lastKnownId}` : '');
-                            const res  = await fetch(url);
+                            const res  = await fetch(`/salesperson_tracking/moving_map_data/${trackerId}`);
                             if (!res.ok) { warn('pollMap HTTP %d', res.status); pollErrors++; return; }
                             const data = await res.json();
                             if (!data.ok) { warn('pollMap ok=false', data); return; }
@@ -1363,7 +1360,7 @@
                             const newIsLive = !!data.is_tracking;
                             const newStatus = newIsLive ? 'live' : 'offline';
 
-                            log('pollMap: status=%s new_points=%d last_id=%d', newStatus, data.points.length, data.last_id);
+                            log('pollMap: status=%s points=%d last_lat=%s', newStatus, data.points.length, data.last_lat);
 
                             const statusChanged = newStatus !== currentStatus;
                             if (statusChanged) {
@@ -1372,73 +1369,29 @@
                                 updateStatus(newStatus, newIsLive ? 'Live' : 'Offline');
                             }
 
-                            if (data.total_distance_km != null && $('kpiDistance'))
-                                $('kpiDistance').textContent = parseFloat(data.total_distance_km).toFixed(1);
-
-                            const newPts = data.points || [];
-
-                            if (newPts.length > 0) {
-                                // Advance cursor
-                                if (data.last_id && data.last_id > lastKnownId)
-                                    lastKnownId = data.last_id;
-
-                                // Append new points to the live polyline without a full redraw
-                                for (const p of newPts) {
-                                    allLatLngs.push([p.lat, p.lng]);
-                                    if (trackPolylines.length > 0) {
-                                        trackPolylines[trackPolylines.length - 1].addLatLng([p.lat, p.lng]);
-                                    } else {
-                                        const poly = L.polyline([[p.lat, p.lng]], { color: '#3b82f6', weight: 4, opacity: 0.9 }).addTo(map);
-                                        trackPolylines.push(poly);
-                                    }
-                                }
-
-                                // Update the current-position marker in-place (no full redraw)
-                                const last = newPts[newPts.length - 1];
-                                const markerColor = newIsLive ? '#22c55e' : '#ef4444';
-                                const tipLabel    = newIsLive ? '● Live' : '● Last seen';
-                                const tooltip     = `${tipLabel}${last.time ? '\n' + last.time : ''}${last.accuracy ? '\nAccuracy: ' + last.accuracy.toFixed(0) + ' m' : ''}`;
-                                if (currentMarker) {
-                                    currentMarker.setLatLng([last.lat, last.lng]);
-                                    currentMarker.setStyle({ fillColor: markerColor });
-                                    currentMarker.setTooltipContent(tooltip);
-                                } else {
-                                    currentMarker = L.circleMarker([last.lat, last.lng], {
-                                        radius: 8, color: '#fff', fillColor: markerColor, fillOpacity: 1, weight: 2,
-                                        pane: 'markerPane',
-                                    }).bindTooltip(tooltip, { permanent: false, sticky: false }).addTo(map);
-                                }
-                                if (currentMarker.bringToFront) currentMarker.bringToFront();
-
-                                if (data.last_seen && $('lastSeenValue'))
-                                    $('lastSeenValue').textContent = data.last_seen;
-
-                                updateStats(allLatLngs.map((ll, i) => ({ lat: ll[0], lng: ll[1] })));
-                                setTimeout(() => map.invalidateSize(), 200);
-
-                            } else if (statusChanged) {
-                                // No new points but status flipped (e.g. went offline) — update marker color
-                                if (currentMarker && allLatLngs.length) {
-                                    const markerColor = newIsLive ? '#22c55e' : '#ef4444';
-                                    currentMarker.setStyle({ fillColor: markerColor });
-                                    if (currentMarker.bringToFront) currentMarker.bringToFront();
-                                }
+                            // Fix 4: re-render whenever point count changes (live movement)
+                            // Also re-render on status change so marker color updates
+                            if (data.points.length !== knownPointCount || statusChanged) {
+                                log('pollMap: re-rendering (was %d pts → %d pts, statusChanged=%s)',
+                                    knownPointCount, data.points.length, statusChanged);
+                                knownPointCount = data.points.length;
+                                await renderPath(data.points, newIsLive);
+                                if (currentMarker?.bringToFront) currentMarker.bringToFront();
                             }
                         } catch(e) {
                             pollErrors++;
                             err('pollMap error (consecutive=%d):', pollErrors, e);
-                            // Always continue — never let an error kill the loop
                         }
                     }
 
                     function schedulePoll() {
-                        // Always poll every 2 seconds; back off only on repeated errors
-                        const delay = pollErrors > 5 ? 10000 : 2000;
-                        setTimeout(async () => { await pollMap(); schedulePoll(); }, delay);
+                        // Poll every 2s when live (to catch each GPS fix), 10s when offline
+                        const interval = currentStatus === 'live' ? 2000 : 10000;
+                        setTimeout(async () => { await pollMap(); schedulePoll(); }, interval);
                     }
 
                     schedulePoll();
-                    log('Polling started (incremental). Status=%s lastKnownId=%d', currentStatus, lastKnownId);
+                    log('Polling started. Status=%s interval=%s', currentStatus, currentStatus === 'live' ? '2s' : '10s');
 
                 })();
                 ]]>

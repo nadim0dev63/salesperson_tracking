@@ -235,87 +235,47 @@
     };
 
     // ── Manager / viewer polling ──────────────────────────────────────────
-    // Uses cursor-based incremental fetching (?after_id=N) so each poll only
-    // fetches NEW points instead of all logs from today.
-    // The loop is self-healing: it always reschedules itself even after errors,
-    // so it never silently dies during a long tracking session.
-    let managerLastId   = 0;          // cursor — id of last received log
-    let managerPollErrors = 0;
-
+    // Polls moving_map_data and renders ALL today's points on the live map,
+    // so manager sees the salesperson's full path update in real time.
     const pollManagerView = async () => {
         try {
-            const url = '/salesperson_tracking/moving_map_data/' + trackerId
-                      + (managerLastId ? '?after_id=' + managerLastId : '');
-            const res  = await fetch(url);
-            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const res  = await fetch('/salesperson_tracking/moving_map_data/' + trackerId);
             const data = await res.json();
             if (!data.ok) return;
-
-            managerPollErrors = 0;
 
             updateStatus(data.status, data.status_label);
 
             if (data.last_seen && $('lastSeenValue'))
                 $('lastSeenValue').textContent = data.last_seen;
 
-            if ($('kpiDistance') && data.total_distance_km != null)
-                $('kpiDistance').textContent = parseFloat(data.total_distance_km).toFixed(1);
+            const pts = data.points || [];
+            if (!pts.length) return;
 
-            const newPts = data.points || [];
-            if (!newPts.length) return;
-
-            // Advance the cursor so the next poll only fetches rows after this
-            if (data.last_id && data.last_id > managerLastId)
-                managerLastId = data.last_id;
-
+            // Rebuild full path on live map
             if (!liveMap) initLiveMap();
 
-            if (managerLastId === (data.last_id || 0) && livePath.length === 0) {
-                // First load: build the full path from initial points
-                livePath = newPts.map(p => [p.lat, p.lng]);
-                if (livePolyline) { liveMap.removeLayer(livePolyline); livePolyline = null; }
-                if (livePath.length > 1)
-                    livePolyline = L.polyline(livePath, { color: '#22c55e', weight: 4 }).addTo(liveMap);
-            } else {
-                // Incremental: append only new points to the existing polyline
-                for (const p of newPts) {
-                    livePath.push([p.lat, p.lng]);
-                    if (livePolyline) {
-                        livePolyline.addLatLng([p.lat, p.lng]);
-                    } else {
-                        livePolyline = L.polyline(livePath, { color: '#22c55e', weight: 4 }).addTo(liveMap);
-                    }
-                }
-            }
+            // Redraw path from all points
+            if (livePolyline) { liveMap.removeLayer(livePolyline); livePolyline = null; }
+            if (liveMarker)   { liveMap.removeLayer(liveMarker);   liveMarker   = null; }
+            livePath = pts.map(p => [p.lat, p.lng]);
 
-            const last = newPts[newPts.length - 1];
-            if (liveMarker) {
-                liveMarker.setLatLng([last.lat, last.lng]);
-            } else {
-                liveMarker = L.circleMarker([last.lat, last.lng], {
-                    radius: 10, color: '#fff', fillColor: '#ef4444', fillOpacity: 1, weight: 3,
-                }).bindTooltip(data.last_seen || '').addTo(liveMap);
+            if (livePath.length > 1) {
+                livePolyline = L.polyline(livePath, { color: '#22c55e', weight: 4 }).addTo(liveMap);
             }
+            const last = pts[pts.length - 1];
+            liveMarker = L.circleMarker([last.lat, last.lng], {
+                radius: 10, color: '#fff', fillColor: '#ef4444', fillOpacity: 1, weight: 3,
+            }).bindTooltip(data.last_seen || '').addTo(liveMap);
+
             liveMap.panTo([last.lat, last.lng], { animate: true, duration: 0.5 });
 
             if ($('latitudeValue'))  $('latitudeValue').textContent  = parseFloat(last.lat).toFixed(6);
             if ($('longitudeValue')) $('longitudeValue').textContent = parseFloat(last.lng).toFixed(6);
+            if ($('kpiDistance') && data.total_distance_km != null)
+                $('kpiDistance').textContent = parseFloat(data.total_distance_km).toFixed(1);
 
             setTimeout(() => liveMap.invalidateSize(), 100);
-        } catch(e) {
-            managerPollErrors++;
-            console.warn('[LiveTracking] pollManagerView error #' + managerPollErrors + ':', e);
-            // Back off briefly on repeated errors but ALWAYS reschedule
-        }
-    };
-
-    // Self-healing scheduler — always reschedules even after errors
-    const scheduleManagerPoll = () => {
-        const delay = managerPollErrors > 5 ? 10000 : 3000;
-        setTimeout(async () => {
-            await pollManagerView();
-            scheduleManagerPoll();
-        }, delay);
+        } catch(e) {}
     };
 
     // ── Boot ──────────────────────────────────────────────────────────────
@@ -335,8 +295,9 @@
             setStartBtn(false); setStopBtn(true);
         }
     } else {
-        // Manager/viewer: start incremental polling immediately, then loop forever
-        pollManagerView().then(scheduleManagerPoll);
+        // Manager/viewer: poll for salesperson's path
+        pollManagerView();
+        setInterval(pollManagerView, 3000);
     }
 
 })();
