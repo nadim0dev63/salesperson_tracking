@@ -146,10 +146,14 @@ class SalespersonTrackingController(http.Controller):
         tracking_status = tracker.tracking_status or 'offline'
         tz_name = self._user_tz(user)
 
+        # Cap initial page load to the last 500 points — the incremental poll
+        # will append any newer points in real time without a full reload.
+        MAX_INIT_POINTS = 500
         logs = request.env["salesperson.location.log"].sudo().search([
             ("tracker_id", "=", tracker_id),
             ("tracked_at", ">=", today_start),
-        ], order="tracked_at asc")
+        ], order="id desc", limit=MAX_INIT_POINTS)
+        logs = logs.sorted(key=lambda r: r.id)   # restore ascending order
 
         _logger.info(
             "moving_map: found %d location logs today for tracker_id=%s (since %s)",
@@ -161,6 +165,7 @@ class SalespersonTrackingController(http.Controller):
         for log in logs:
             if log.latitude and log.longitude:
                 points.append({
+                    "id":  log.id,
                     "lat": log.latitude,
                     "lng": log.longitude,
                     "accuracy": log.accuracy,
@@ -469,16 +474,9 @@ class SalespersonTrackingController(http.Controller):
         if not tracker or not tracker.exists():
             return self._json_response({"ok": False})
 
-        # Run the blocking Nominatim HTTP request AFTER releasing the DB cursor
-        # by committing first.  This prevents the 5-second HTTP timeout from
-        # holding a DB worker connection open and exhausting the pool.
-        request.env.cr.commit()
         name = tracker._reverse_geocode(lat, lng)
         if name:
-            # Re-open a short transaction just for the write
-            request.env["salesperson.tracker"].sudo().browse(tracker.id).write(
-                {"location_name": name}
-            )
+            tracker.write({"location_name": name})
             _logger.debug("geocode_location: tracker=%s → %r", tracker.id, name)
 
         return self._json_response({"ok": True, "location_name": name or tracker.location_name or ""})
@@ -532,105 +530,106 @@ class SalespersonTrackingController(http.Controller):
                 "tracker_id": tracker.id,
             })
 
-        # Read back the fields we need directly from SQL — the previous
-        # update_live_location() call used raw SQL so the ORM cache may be
-        # stale.  A direct SQL SELECT guarantees we see the committed values
-        # without triggering any ORM recomputes or field dependencies.
-        request.env.cr.execute(
-            """
-            SELECT is_tracking, last_seen, last_latitude, last_longitude,
-                   total_distance_km, location_name
-              FROM salesperson_tracker
-             WHERE id = %s
-            """,
-            (tracker.id,),
-        )
-        row = request.env.cr.fetchone()
-        if not row:
-            return self._json_response({"ok": False, "error": "Tracker not found."})
-
-        is_tracking_db, last_seen_db, lat_db, lng_db, dist_db, loc_db = row
-        total_distance = round(dist_db or 0.0, 3)
+        # Use the tracker's pre-computed running total — already updated by
+        # update_live_location() above. Avoids a full log table scan + haversine
+        # recompute on every tick that grows O(N) with session length and causes
+        # Odoo worker timeouts after ~30 minutes of continuous tracking.
+        tracker.invalidate_recordset()
+        total_distance = round(tracker.total_distance_km or 0.0, 3)
 
         tz_name = self._user_tz(user)
-        last_seen_local = _localize_dt(last_seen_db, tz_name) if last_seen_db else ""
-
-        map_url = (
-            f"https://www.openstreetmap.org/?mlat={lat_db}&mlon={lng_db}"
-            f"#map=16/{lat_db}/{lng_db}"
-            if lat_db and lng_db else ""
-        )
-
-        # Fast log count for the live "Logs: N" counter in the UI
-        request.env.cr.execute(
-            "SELECT COUNT(*) FROM salesperson_location_log WHERE tracker_id = %s",
-            (tracker.id,),
-        )
-        total_logs = request.env.cr.fetchone()[0]
+        last_seen_local = _localize_dt(tracker.last_seen, tz_name)
 
         _logger.debug(
-            "update_location: returning ok=True tracker=%s is_tracking=%s distance=%.3f logs=%d",
-            tracker.id, is_tracking_db, total_distance, total_logs,
+            "update_location: returning ok=True tracker=%s status=%s distance=%.3f",
+            tracker.id, tracker.tracking_status, total_distance,
         )
 
         return self._json_response({
             "ok": True,
             "tracker_id": tracker.id,
-            "status": "live" if is_tracking_db else "offline",
-            "status_label": "Live" if is_tracking_db else "Offline",
-            "is_tracking": is_tracking_db,
+            "status": tracker.tracking_status,
+            "status_label": tracker.tracking_status_label,
             "last_seen": last_seen_local,
-            "latitude": lat_db,
-            "longitude": lng_db,
-            "location_name": loc_db or "",
-            "map_url": map_url,
+            "latitude": tracker.last_latitude,
+            "longitude": tracker.last_longitude,
+            "location_name": tracker.location_name or "",
+            "map_url": tracker.openstreetmap_url or "",
             "total_distance_km": total_distance,
-            "total_logs": total_logs,
         })
 
     @http.route("/salesperson_tracking/moving_map_data/<int:tracker_id>", type="http", auth="user", methods=["GET"], csrf=False)
     def moving_map_data(self, tracker_id, **kwargs):
-        """JSON endpoint: returns today's location points + current tracking status for live map polling."""
+        """JSON endpoint: returns today's location points + current tracking status for live map polling.
+
+        Supports incremental fetching via ?after_id=<last_log_id> so the manager
+        page only fetches NEW points on each poll instead of all logs from today.
+        This prevents O(N) growth that caused stalls after ~30 min of continuous tracking.
+
+        First poll (no after_id): returns the last MAX_INIT_POINTS points for initial map draw.
+        Subsequent polls (?after_id=N): returns only rows with id > N — typically 1-3 rows per tick.
+        """
+        MAX_INIT_POINTS = 500   # cap initial load — enough to draw today's path
         user = self._check_access()
         tracker = request.env["salesperson.tracker"].sudo().browse(tracker_id)
         if not tracker.exists():
             _logger.warning("moving_map_data: tracker_id=%s not found", tracker_id)
             return self._json_response({"ok": False, "error": "Tracker not found"})
 
-        today_start = fields.Datetime.to_datetime(fields.Date.today())
-        logs = request.env["salesperson.location.log"].sudo().search([
-            ("tracker_id", "=", tracker_id),
-            ("tracked_at", ">=", today_start),
-        ], order="tracked_at asc")
-
         tz_name = self._user_tz(user)
+        today_start = fields.Datetime.to_datetime(fields.Date.today())
+
+        # Parse optional cursor from query string
+        after_id = kwargs.get("after_id") or request.httprequest.args.get("after_id")
+        try:
+            after_id = int(after_id) if after_id else None
+        except (ValueError, TypeError):
+            after_id = None
+
+        Log = request.env["salesperson.location.log"].sudo()
+
+        if after_id is not None:
+            # INCREMENTAL: only fetch rows newer than the cursor — O(1) per poll
+            domain = [
+                ("tracker_id", "=", tracker_id),
+                ("tracked_at", ">=", today_start),
+                ("id", ">", after_id),
+            ]
+            logs = Log.search(domain, order="id asc")
+        else:
+            # INITIAL LOAD: cap at MAX_INIT_POINTS most recent points to avoid
+            # serialising thousands of rows into JSON on first open.
+            # We fetch the last N by ordering desc then reversing.
+            domain = [
+                ("tracker_id", "=", tracker_id),
+                ("tracked_at", ">=", today_start),
+            ]
+            logs = Log.search(domain, order="id desc", limit=MAX_INIT_POINTS)
+            logs = logs.sorted(key=lambda r: r.id)   # restore ascending order
+
         points = []
-        skipped = 0
+        last_id = after_id or 0
         for log in logs:
             if log.latitude and log.longitude:
                 points.append({
+                    "id":  log.id,
                     "lat": log.latitude,
                     "lng": log.longitude,
                     "time": _localize_dt(log.tracked_at, tz_name),
                     "accuracy": log.accuracy,
                     "location_name": log.location_name or "",
                 })
-            else:
-                skipped += 1
+                if log.id > last_id:
+                    last_id = log.id
 
-        if skipped:
-            _logger.debug(
-                "moving_map_data: tracker_id=%s skipped %d logs with missing coords",
-                tracker_id, skipped,
-            )
-
-        # Fallback: use last known position when no log points yet
-        if not points and tracker.last_latitude and tracker.last_longitude:
+        # Fallback: use last known position when no log points at all (fresh start)
+        if not points and after_id is None and tracker.last_latitude and tracker.last_longitude:
             _logger.info(
                 "moving_map_data: tracker_id=%s has no log points — using last_known fallback lat=%s lng=%s",
                 tracker_id, tracker.last_latitude, tracker.last_longitude,
             )
             points.append({
+                "id":  0,
                 "lat": tracker.last_latitude,
                 "lng": tracker.last_longitude,
                 "time": _localize_dt(tracker.last_seen, tz_name) if tracker.last_seen else "",
@@ -638,14 +637,15 @@ class SalespersonTrackingController(http.Controller):
                 "location_name": tracker.location_name or "",
             })
 
-        total_dist = self._compute_total_distance(logs)
+        # Use tracker's pre-computed running total — avoids full haversine scan
+        tracker.invalidate_recordset()
+        total_dist = round(tracker.total_distance_km or 0.0, 3)
 
         _logger.debug(
-            "moving_map_data: tracker_id=%s status=%s points=%d total_dist=%.3f",
-            tracker_id, tracker.tracking_status, len(points), total_dist,
+            "moving_map_data: tracker_id=%s status=%s new_points=%d last_id=%d total_dist=%.3f after_id=%s",
+            tracker_id, tracker.tracking_status, len(points), last_id, total_dist, after_id,
         )
 
-        # status = "live" when is_tracking=True, "offline" otherwise (idle removed)
         status = "live" if tracker.is_tracking else "offline"
         return self._json_response({
             "ok": True,
@@ -653,6 +653,7 @@ class SalespersonTrackingController(http.Controller):
             "status_label": "Live" if tracker.is_tracking else "Offline",
             "is_tracking": tracker.is_tracking,
             "points": points,
+            "last_id": last_id,           # cursor for next incremental poll
             "last_lat": tracker.last_latitude or 0,
             "last_lng": tracker.last_longitude or 0,
             "last_seen": _localize_dt(tracker.last_seen, tz_name) if tracker.last_seen else "",
@@ -727,37 +728,22 @@ class SalespersonTrackingController(http.Controller):
         if not tracker.exists():
             return self._json_response({"ok": False, "error": "Tracker not found"})
 
-        # Read directly from SQL — same worker that handled /update may have
-        # a stale ORM cache for is_tracking after our raw SQL writes.
-        request.env.cr.execute(
-            """
-            SELECT is_tracking, last_latitude, last_longitude, last_seen,
-                   checkin_time, checkout_time, location_name
-              FROM salesperson_tracker WHERE id = %s
-            """,
-            (tracker_id,),
-        )
-        row = request.env.cr.fetchone()
-        if not row:
-            return self._json_response({"ok": False, "error": "Tracker not found"})
-        is_tracking_db, lat, lng, last_seen, checkin, checkout, loc = row
-
         tz_name = self._user_tz(user)
         _logger.debug(
-            "tracking_status: tracker=%s is_tracking=%s (SQL)",
-            tracker_id, is_tracking_db,
+            "tracking_status: tracker=%s is_tracking=%s status=%s",
+            tracker_id, tracker.is_tracking, tracker.tracking_status,
         )
         return self._json_response({
             "ok": True,
-            "is_tracking": is_tracking_db,
-            "status": "live" if is_tracking_db else "offline",
-            "status_label": "Live" if is_tracking_db else "Offline",
-            "last_lat": lat or 0,
-            "last_lng": lng or 0,
-            "last_seen": _localize_dt(last_seen, tz_name) if last_seen else "",
-            "checkin_time": _localize_dt(checkin, tz_name) if checkin else "",
-            "checkout_time": _localize_dt(checkout, tz_name) if checkout else "",
-            "location_name": loc or "",
+            "is_tracking": tracker.is_tracking,
+            "status": tracker.tracking_status,
+            "status_label": tracker.tracking_status_label,
+            "last_lat": tracker.last_latitude or 0,
+            "last_lng": tracker.last_longitude or 0,
+            "last_seen": _localize_dt(tracker.last_seen, tz_name) if tracker.last_seen else "",
+            "checkin_time": _localize_dt(tracker.checkin_time, tz_name) if tracker.checkin_time else "",
+            "checkout_time": _localize_dt(tracker.checkout_time, tz_name) if tracker.checkout_time else "",
+            "location_name": tracker.location_name or "",
         })
 
     @http.route("/salesperson_tracking/save_photo", type="json", auth="user", methods=["POST"], csrf=False)

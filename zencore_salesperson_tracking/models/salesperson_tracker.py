@@ -165,8 +165,8 @@ class SalespersonTracker(models.Model):
             return []
         return mapping[value]
 
-    def update_live_location(self, latitude, longitude, accuracy=None, source="browser", distance=0.0):
-        """Record a live GPS position.
+    def update_live_location(self, latitude, longitude, accuracy=None, source="browser", distance=0.0, retry_count=0):
+        """Update live location with retry logic for serialization failures.
 
         IMPORTANT: We intentionally do NOT write salesperson coordinates to
         res.partner.partner_latitude / partner_longitude.  Those fields belong
@@ -176,17 +176,11 @@ class SalespersonTracker(models.Model):
         Every call — whether the position changed or not — creates a new log entry.
         The JS sends every 2 seconds, and each send must produce a row so the
         moving-map path and log count are always up to date.
-
-        Transaction safety: we use raw SQL for the UPDATE and INSERT to avoid
-        ORM recomputes and lock contention.  We do NOT call cr.rollback() —
-        Odoo's service_model.retrying() wrapper handles that at the HTTP layer.
-        The geofence check runs inside a SAVEPOINT so its failures cannot
-        corrupt the cursor and roll back the position data we already wrote.
         """
         self.ensure_one()
         _logger.debug(
-            "update_live_location: tracker=%s user=%s lat=%.6f lng=%.6f accuracy=%s source=%s",
-            self.id, self.user_id.name, latitude, longitude, accuracy, source,
+            "update_live_location: tracker=%s user=%s lat=%.6f lng=%.6f accuracy=%s source=%s retry=%s",
+            self.id, self.user_id.name, latitude, longitude, accuracy, source, retry_count,
         )
 
         try:
@@ -202,93 +196,95 @@ class SalespersonTracker(models.Model):
             # calls /salesperson_tracking/geocode separately (throttled, async).
             location_name = self.location_name or ""
 
-            # ── 1. Update tracker position using a single atomic SQL UPDATE ──
-            # We use raw SQL for two reasons:
-            #   a) total_distance_km += delta must be atomic (no read-modify-write
-            #      race between concurrent worker requests for the same tracker).
-            #   b) We do NOT write is_tracking here — it is already True (set by
-            #      action_start_tracking).  Writing it on every tick triggers ORM
-            #      recomputes and row-level locks that cause serialization failures.
-            self.env.cr.execute(
-                """
-                UPDATE salesperson_tracker
-                   SET last_seen          = %s,
-                       last_latitude      = %s,
-                       last_longitude     = %s,
-                       last_accuracy      = %s,
-                       total_distance_km  = total_distance_km + %s,
-                       location_name      = %s
-                 WHERE id = %s
-                """,
-                (
-                    now,
-                    latitude,
-                    longitude,
-                    accuracy or 0.0,
-                    distance or 0.0,
-                    location_name,
-                    self.id,
-                ),
-            )
-            # Invalidate ORM cache so subsequent field reads are fresh
-            self.invalidate_recordset()
-            _logger.debug("update_live_location: tracker updated ok (SQL)")
+            # 1. Append location log entry FIRST using a savepoint.
+            #    The log table is append-only so it never has row-level contention.
+            #    Committing the log before touching the heavily-contested tracker
+            #    row guarantees every 2-second ping produces a DB row even when
+            #    the tracker write serialises and retries.
+            log_vals = {
+                "tracker_id": self.id,
+                "tracked_at": now,
+                "latitude": latitude,
+                "longitude": longitude,
+                "accuracy": accuracy or 0.0,
+                "source": source,
+                "location_name": location_name,
+            }
+            with self.env.cr.savepoint():
+                log = self.env["salesperson.location.log"].sudo().create(log_vals)
+            _logger.debug("update_live_location: log created id=%s", log.id)
 
-            # ── 2. Append location log — separate INSERT, no FK recomputes ──
+            # 2. Update tracker row.
+            #
+            #    total_distance_km uses a raw SQL increment so the DB does the
+            #    arithmetic atomically — no read-modify-write race between workers.
+            #
+            #    is_tracking and location_name are only written when they actually
+            #    change, which avoids triggering mail.thread chatter machinery on
+            #    every 2-second tick (the model inherits mail.thread).
+            dist_delta = float(distance or 0.0)
             self.env.cr.execute(
-                """
-                INSERT INTO salesperson_location_log
-                    (tracker_id, user_id, tracked_at, latitude, longitude, accuracy, source,
-                     location_name, create_uid, write_uid, create_date, write_date)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now(), now())
-                """,
-                (
-                    self.id,
-                    self.user_id.id,
-                    now,
-                    latitude,
-                    longitude,
-                    accuracy or 0.0,
-                    source,
-                    location_name,
-                    self.env.uid,
-                    self.env.uid,
-                ),
+                """UPDATE salesperson_tracker
+                      SET last_seen       = %s,
+                          last_latitude   = %s,
+                          last_longitude  = %s,
+                          last_accuracy   = %s,
+                          total_distance_km = total_distance_km + %s
+                    WHERE id = %s""",
+                (now, latitude, longitude, accuracy or 0.0, dist_delta, self.id),
             )
-            # Retrieve the new log id for logging
-            self.env.cr.execute("SELECT lastval()")
-            log_id = self.env.cr.fetchone()[0]
-            _logger.debug("update_live_location: log created id=%s (SQL)", log_id)
+            # Only write ORM-tracked fields when their value actually changes,
+            # to avoid mail.thread noise and extra index updates every tick.
+            orm_vals = {}
+            if not self.is_tracking:
+                orm_vals["is_tracking"] = True
+            if location_name and self.location_name != location_name:
+                orm_vals["location_name"] = location_name
+            if orm_vals:
+                self.write(orm_vals)
+            self.invalidate_recordset()   # keep ORM cache consistent with raw SQL
+            _logger.debug("update_live_location: tracker updated ok")
 
-            # ── 3. Geofence — debounced, runs at most every 10 s ─────────────
-            # Run inside a SAVEPOINT so any failure (ORM constraint, checkin
-            # create error, etc.) cannot corrupt the cursor state and roll back
-            # the tracker UPDATE + log INSERT we already executed above.
+            # 3. Geofence auto check-in / check-out
             try:
-                self.env.cr.execute("SAVEPOINT geofence_check")
                 self._check_geofence(latitude, longitude)
-                self.env.cr.execute("RELEASE SAVEPOINT geofence_check")
             except Exception as gf_err:
-                self.env.cr.execute("ROLLBACK TO SAVEPOINT geofence_check")
                 _logger.warning(
-                    "update_live_location: geofence check failed for tracker %s (savepoint rolled back): %s",
+                    "update_live_location: geofence check failed for tracker %s: %s",
                     self.id, gf_err, exc_info=True,
                 )
 
+            # 4. Update active session's last position
+            if self.current_session_id and self.current_session_id.state == "active":
+                self.current_session_id.write({
+                    "last_location_lat": latitude,
+                    "last_location_lng": longitude,
+                })
+                _logger.debug("update_live_location: session %s position updated", self.current_session_id.id)
+
             _logger.info(
                 "update_live_location: SUCCESS tracker=%s user=%s lat=%.6f lng=%.6f log_id=%s",
-                self.id, self.user_id.name, latitude, longitude, log_id,
+                self.id, self.user_id.name, latitude, longitude, log.id,
             )
 
         except Exception as e:
-            # Do NOT call cr.rollback() here — Odoo's service_model.retrying()
-            # wrapper already handles transaction rollback and retry at the HTTP
-            # layer.  Calling rollback() inside the model method invalidates the
-            # cursor and causes double-rollback errors that kill the worker.
             _logger.error(
-                "update_live_location: FAILED tracker=%s error=%s",
-                self.id, e, exc_info=True,
+                "update_live_location: FAILED tracker=%s retry=%s error=%s",
+                self.id, retry_count, e, exc_info=True,
             )
+            self.env.cr.rollback()
+            if "could not serialize access" in str(e) and retry_count < 3:
+                import time
+                wait = 0.05 * (2 ** retry_count)   # 50ms → 100ms → 200ms (tighter than before)
+                _logger.info(
+                    "update_live_location: serialization conflict, retrying in %.2fs (attempt %s/3)",
+                    wait, retry_count + 1,
+                )
+                time.sleep(wait)
+                self.invalidate_recordset()
+                return self.update_live_location(
+                    latitude, longitude, accuracy, source, distance, retry_count + 1
+                )
             raise
 
     @api.model
