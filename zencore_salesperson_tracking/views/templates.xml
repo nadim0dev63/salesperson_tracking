@@ -9,16 +9,14 @@
             <head>
                 <meta charset="utf-8"/>
                 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
-                <meta name="apple-mobile-web-app-capable" content="yes"/>
-                <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
                 <title>Live GPS Tracking — <t t-out="tracker.user_id.name or user.name"/></title>
                 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"/>
                 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
                 <style>
-                    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
                     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f0f4f8; min-height: 100vh; }
                     .tracking-container { max-width: 480px; margin: 0 auto; background: #f5f7fb; min-height: 100vh; }
-                    .app-header { background: white; padding: 16px 20px; border-bottom: 1px solid #e8ecf0; position: sticky; top: 0; z-index: 10; }
+                    .app-header { background: white; padding: 16px 20px; border-bottom: 1px solid #e8ecf0; }
                     .app-header h1 { font-size: 22px; font-weight: 600; color: #1a1f36; margin-bottom: 4px; }
                     .app-header-sub { font-size: 13px; color: #6b7280; }
                     .stats-grid { background: white; margin: 12px 16px; border-radius: 20px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
@@ -40,13 +38,15 @@
                     #liveMap { height: 280px; width: 100%; background: #e8ecf0; }
                     .map-attribution { position: absolute; bottom: 8px; right: 8px; background: rgba(255,255,255,0.9); padding: 2px 8px; border-radius: 12px; font-size: 10px; color: #6b7280; z-index: 1000; pointer-events: none; }
                     .action-buttons { display: flex; gap: 12px; margin: 16px 16px 12px; flex-wrap: wrap; }
-                    .btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 20px; border-radius: 40px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; transition: all 0.2s ease; text-decoration: none; }
+                    .btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 20px; border-radius: 40px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; transition: all 0.2s ease; text-decoration: none; }
                     .btn-start { background: #3b82f6; color: white; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-                    .btn-start:active { transform: scale(0.98); }
+                    .btn-start:hover { background: #2563eb; transform: translateY(-1px); }
                     .btn-stop { background: #ef4444; color: white; }
-                    .btn-stop:active { transform: scale(0.98); }
+                    .btn-stop:hover { background: #dc2626; }
                     .btn-camera { background: #8b5cf6; color: white; }
+                    .btn-camera:hover { background: #7c3aed; }
                     .btn-map { background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; }
+                    .btn-map:hover { background: #e5e7eb; }
                     .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
                     .status-message { margin: 12px 16px 16px; padding: 12px 16px; border-radius: 16px; display: flex; align-items: center; gap: 10px; font-size: 13px; }
                     .status-message.info { background: #ecfdf5; color: #065f46; border-left: 3px solid #10b981; }
@@ -63,8 +63,6 @@
                     .close-camera { width: 50px; height: 50px; border-radius: 50%; background: #ef4444; border: none; color: white; font-size: 24px; cursor: pointer; }
                     .snap-notification { position: fixed; bottom: 100px; left: 20px; right: 20px; background: #22c55e; color: white; padding: 12px; border-radius: 50px; text-align: center; z-index: 2001; display: none; }
                     .readonly-badge { display: inline-flex; align-items: center; gap: 5px; background: #fef3c7; padding: 6px 12px; border-radius: 20px; font-size: 12px; color: #92400e; }
-                    .keep-awake-warning { background: #fef3c7; margin: 8px 16px; padding: 8px 12px; border-radius: 12px; font-size: 11px; color: #92400e; text-align: center; display: none; }
-                    @media (max-width: 480px) { .stat-value { font-size: 12px; } .kpi-number { font-size: 20px; } }
                 </style>
             </head>
             <body>
@@ -179,10 +177,6 @@
                         </a>
                     </div>
 
-                    <div class="keep-awake-warning" id="keepAwakeWarning">
-                        ⚠️ Keep this screen on for continuous tracking. Screen lock pauses GPS.
-                    </div>
-
                     <div class="status-message info" id="statusMessage">
                         <span class="status-dot" id="statusDot"></span>
                         <span id="statusText"><t t-if="is_owner">Press Start and allow GPS permission to begin tracking.</t><t t-else="">Viewing <t t-out="tracker.user_id.name"/>'s live location.</t></span>
@@ -213,7 +207,7 @@
 
                     const state = {
                         tracking: isTrackingInit && isOwner,
-                        watchId: null,
+                        sendIntervalId: null,
                         timerIntervalId: null,
                         trackingStart: null,
                         lastLat: null,
@@ -221,16 +215,63 @@
                         totalDistance: parseFloat(root.dataset.distance || '0'),
                         userMovedMap: false,
                         mapInitialised: false,
-                        lastSendTime: 0,
-                        reconnectAttempts: 0,
                     };
 
-                    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                    
-                    // Show keep-awake warning on mobile
-                    if (isMobile && isOwner) {
-                        document.getElementById('keepAwakeWarning').style.display = 'block';
+                    // Position provider with GPS + IP fallback
+                    class PositionProvider {
+                        constructor() {
+                            this.hasGps = !!navigator.geolocation;
+                            this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                        }
+
+                        async getPosition() {
+                            if (this.hasGps) {
+                                try {
+                                    return await this._getGpsPosition();
+                                } catch (e) {
+                                    console.warn('GPS failed, trying IP fallback:', e.message);
+                                }
+                            }
+                            return await this._getIpPosition();
+                        }
+
+                        _getGpsPosition() {
+                            return new Promise((resolve, reject) => {
+                                const timeout = setTimeout(() => reject(new Error('GPS timeout')), 10000);
+                                navigator.geolocation.getCurrentPosition(
+                                    (pos) => { clearTimeout(timeout); resolve(pos); },
+                                    (err) => { clearTimeout(timeout); reject(err); },
+                                    { enableHighAccuracy: this.isMobile, timeout: 10000, maximumAge: 5000 }
+                                );
+                            });
+                        }
+
+                        async _getIpPosition() {
+                            const services = [
+                                'https://ipapi.co/json/',
+                                'https://ipwho.is/'
+                            ];
+                            for (const url of services) {
+                                try {
+                                    const res = await fetch(url);
+                                    const data = await res.json();
+                                    if (data.latitude && data.longitude) {
+                                        return {
+                                            coords: {
+                                                latitude: data.latitude,
+                                                longitude: data.longitude,
+                                                accuracy: 5000,
+                                                timestamp: Date.now()
+                                            }
+                                        };
+                                    }
+                                } catch (e) {}
+                            }
+                            throw new Error('No position available');
+                        }
                     }
+
+                    const provider = new PositionProvider();
 
                     // Helper functions
                     const haversine = (lat1, lon1, lat2, lon2) => {
@@ -262,17 +303,6 @@
                         if (statusText) statusText.textContent = message;
                         if (msgDiv) msgDiv.className = 'status-message ' + type;
                         if (statusDot) statusDot.className = 'status-dot ' + (state.tracking ? 'live' : 'offline');
-                    };
-
-                    const updateUI = (lat, lng, acc, lastSeen, distance, locationName) => {
-                        const updateEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-                        if (lat) updateEl('latitudeValue', lat.toFixed(6));
-                        if (lng) updateEl('longitudeValue', lng.toFixed(6));
-                        if (acc !== undefined) updateEl('accuracyValue', acc.toFixed(1) + ' m');
-                        if (lastSeen) updateEl('lastSeenValue', lastSeen);
-                        if (distance !== undefined) updateEl('kpiDistance', distance.toFixed(1));
-                        if (locationName && document.getElementById('locationNameValue'))
-                            document.getElementById('locationNameValue').textContent = locationName;
                     };
 
                     // Map
@@ -325,76 +355,51 @@
                         state.totalDistance += delta;
                         state.lastLat = lat;
                         state.lastLng = lng;
-                        state.lastSendTime = Date.now();
 
                         try {
                             const res = await postJson('/salesperson_tracking/update', {
                                 latitude: lat, longitude: lng, accuracy: acc,
                                 distance: delta, tracker_id: trackerId,
                             });
-                            
-                            updateUI(lat, lng, acc, res.last_seen, res.total_distance_km, res.location_name);
+
+                            const updateEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+                            updateEl('latitudeValue', lat.toFixed(6));
+                            updateEl('longitudeValue', lng.toFixed(6));
+                            updateEl('lastSeenValue', res.last_seen || new Date().toLocaleTimeString());
+                            updateEl('accuracyValue', acc.toFixed(1) + ' m');
+                            if (res.total_distance_km != null) updateEl('kpiDistance', parseFloat(res.total_distance_km).toFixed(1));
+                            if (res.location_name && document.getElementById('locationNameValue'))
+                                document.getElementById('locationNameValue').textContent = res.location_name;
+
                             updateMap(lat, lng, firstFix);
                             updateStatus('Tracking Active', 'info');
-                            state.reconnectAttempts = 0;
                         } catch (e) {
                             console.error('Send failed:', e);
                             updateStatus('Network error - retrying', 'error');
                         }
                     }
 
-                    // GPS watch position (continuous - best for mobile)
-                    function startWatching() {
-                        if (state.watchId !== null) return;
-                        
-                        if (!navigator.geolocation) {
-                            updateStatus('GPS not supported', 'error');
-                            return;
+                    // Main tracking loop
+                    async function doTick() {
+                        if (!state.tracking || !isOwner) return;
+                        try {
+                            const pos = await provider.getPosition();
+                            await sendPosition(pos, state.lastLat === null);
+                        } catch (e) {
+                            updateStatus(`Location error: ${e.message}`, 'error');
                         }
-                        
-                        updateStatus('Requesting GPS permission...', 'info');
-                        
-                        state.watchId = navigator.geolocation.watchPosition(
-                            async (pos) => {
-                                const firstFix = state.lastLat === null;
-                                await sendPosition(pos, firstFix);
-                            },
-                            (err) => {
-                                let msg = '';
-                                switch(err.code) {
-                                    case 1: msg = 'Location permission denied. Please enable in settings.'; break;
-                                    case 2: msg = 'GPS signal unavailable. Try moving outside.'; break;
-                                    case 3: msg = 'GPS timeout. Retrying...'; break;
-                                    default: msg = err.message;
-                                }
-                                updateStatus(msg, 'error');
-                                console.error('GPS error:', err);
-                                
-                                // Try to restart watch on timeout
-                                if (err.code === 3 && state.tracking) {
-                                    setTimeout(() => {
-                                        if (state.tracking) {
-                                            navigator.geolocation.clearWatch(state.watchId);
-                                            state.watchId = null;
-                                            startWatching();
-                                        }
-                                    }, 5000);
-                                }
-                            },
-                            { 
-                                enableHighAccuracy: true, 
-                                timeout: 15000, 
-                                maximumAge: 0
-                            }
-                        );
-                        
-                        updateStatus('GPS listening for location...', 'info');
                     }
 
-                    function stopWatching() {
-                        if (state.watchId !== null) {
-                            navigator.geolocation.clearWatch(state.watchId);
-                            state.watchId = null;
+                    function startLoop() {
+                        if (state.sendIntervalId) return;
+                        state.sendIntervalId = setInterval(doTick, 2000);
+                        doTick();
+                    }
+
+                    function stopLoop() {
+                        if (state.sendIntervalId) {
+                            clearInterval(state.sendIntervalId);
+                            state.sendIntervalId = null;
                         }
                     }
 
@@ -411,16 +416,10 @@
                         try {
                             const result = await postJson('/salesperson_tracking/start', { tracker_id: trackerId });
                             if (!result.ok) throw new Error(result.error);
-                            
                             state.tracking = true;
                             state.trackingStart = Date.now();
-                            state.lastLat = null;
-                            state.lastLng = null;
-                            
                             if (!state.timerIntervalId) state.timerIntervalId = setInterval(tickTimer, 1000);
-                            
-                            startWatching();
-                            
+                            startLoop();
                             document.getElementById('stopButton').disabled = false;
                             updateStatus('Tracking Active', 'info');
                         } catch (e) {
@@ -435,14 +434,11 @@
                         document.getElementById('stopButton').disabled = true;
                         try {
                             await postJson('/salesperson_tracking/stop', { tracker_id: trackerId });
-                            
                             state.tracking = false;
                             if (state.timerIntervalId) clearInterval(state.timerIntervalId);
                             state.timerIntervalId = null;
                             state.trackingStart = null;
-                            
-                            stopWatching();
-                            
+                            stopLoop();
                             document.getElementById('startButton').disabled = false;
                             updateStatus('Offline - Press Start', 'warning');
                         } catch (e) {
@@ -451,7 +447,7 @@
                         document.getElementById('stopButton').disabled = false;
                     }
 
-                    // Cross-tab sync + keep-alive ping
+                    // Cross-tab sync
                     async function pollStatus() {
                         try {
                             const res = await fetch(`/salesperson_tracking/status/${trackerId}`);
@@ -464,76 +460,32 @@
                                     state.tracking = true;
                                     state.trackingStart = Date.now();
                                     if (!state.timerIntervalId) state.timerIntervalId = setInterval(tickTimer, 1000);
-                                    startWatching();
+                                    startLoop();
                                     document.getElementById('startButton').disabled = true;
                                     document.getElementById('stopButton').disabled = false;
-                                    updateStatus('Tracking Active (synced)', 'info');
                                 } else {
                                     state.tracking = false;
                                     if (state.timerIntervalId) clearInterval(state.timerIntervalId);
                                     state.timerIntervalId = null;
-                                    stopWatching();
+                                    stopLoop();
                                     document.getElementById('startButton').disabled = false;
                                     document.getElementById('stopButton').disabled = true;
-                                    updateStatus('Offline (synced)', 'warning');
                                 }
+                                updateStatus(state.tracking ? 'Tracking Active' : 'Offline', state.tracking ? 'info' : 'warning');
                             }
                             
-                            // For viewers, just update display
                             if (!isOwner && data.last_lat && data.last_lng) {
                                 updateMap(data.last_lat, data.last_lng, !state.mapInitialised);
-                                updateUI(data.last_lat, data.last_lng, null, data.last_seen, null, data.location_name);
+                                if (data.last_seen) document.getElementById('lastSeenValue').textContent = data.last_seen;
+                                if (data.location_name) document.getElementById('locationNameValue').textContent = data.location_name;
+                                document.getElementById('latitudeValue').textContent = data.last_lat.toFixed(6);
+                                document.getElementById('longitudeValue').textContent = data.last_lng.toFixed(6);
                             }
-                            
-                            // Keep-alive: if tracking but no update in 60s, try to restart GPS
-                            if (state.tracking && isOwner && (Date.now() - state.lastSendTime) > 60000) {
-                                console.warn('No GPS update for 60s, restarting watch...');
-                                stopWatching();
-                                setTimeout(() => startWatching(), 1000);
-                            }
-                            
                         } catch (e) {}
                     }
 
                     function schedulePoll() {
-                        setTimeout(async () => { await pollStatus(); schedulePoll(); }, 8000);
-                    }
-
-                    // Handle page visibility (mobile screen lock)
-                    function handleVisibilityChange() {
-                        if (document.hidden) {
-                            updateStatus('Screen locked - GPS may pause', 'warning');
-                        } else if (state.tracking) {
-                            updateStatus('Tracking Active', 'info');
-                            // Restart GPS when returning to active tab
-                            if (state.watchId === null && state.tracking) {
-                                startWatching();
-                            }
-                        }
-                    }
-                    
-                    document.addEventListener('visibilitychange', handleVisibilityChange);
-                    
-                    // Prevent screen lock on mobile (request wake lock)
-                    let wakeLock = null;
-                    async function requestWakeLock() {
-                        if ('wakeLock' in navigator && isMobile && state.tracking) {
-                            try {
-                                wakeLock = await navigator.wakeLock.request('screen');
-                                wakeLock.addEventListener('release', () => {
-                                    console.log('Wake lock released');
-                                });
-                            } catch (e) {
-                                console.log('Wake lock not supported:', e);
-                            }
-                        }
-                    }
-                    
-                    function releaseWakeLock() {
-                        if (wakeLock) {
-                            wakeLock.release();
-                            wakeLock = null;
-                        }
+                        setTimeout(async () => { await pollStatus(); schedulePoll(); }, 5000);
                     }
 
                     // Camera
@@ -582,8 +534,7 @@
                     if (state.tracking && isOwner) {
                         state.trackingStart = Date.now();
                         state.timerIntervalId = setInterval(tickTimer, 1000);
-                        startWatching();
-                        requestWakeLock();
+                        startLoop();
                         document.getElementById('startButton').disabled = true;
                         document.getElementById('stopButton').disabled = false;
                     } else {
@@ -591,14 +542,8 @@
                         document.getElementById('stopButton').disabled = true;
                     }
 
-                    document.getElementById('startButton')?.addEventListener('click', () => {
-                        startTracking();
-                        requestWakeLock();
-                    });
-                    document.getElementById('stopButton')?.addEventListener('click', () => {
-                        stopTracking();
-                        releaseWakeLock();
-                    });
+                    document.getElementById('startButton')?.addEventListener('click', startTracking);
+                    document.getElementById('stopButton')?.addEventListener('click', stopTracking);
                     document.getElementById('openCameraBtn')?.addEventListener('click', openCamera);
                     document.getElementById('captureBtn')?.addEventListener('click', capturePhoto);
                     document.getElementById('closeCameraBtn')?.addEventListener('click', closeCamera);
